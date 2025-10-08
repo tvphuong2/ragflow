@@ -78,7 +78,7 @@ def export_llm_interaction_log(
     tenant_id: str | None,
     llm_name: str | None,
     model_name: str | None,
-    provider: str | None,
+    provider: str | list[str] | None,
     mode: str,
     system_prompt: str | None,
     history: list[dict[str, Any]] | None,
@@ -95,13 +95,14 @@ def export_llm_interaction_log(
     sanitized_output = _safe_serialize(output)
     sanitized_usage = _safe_serialize(usage or {})
     sanitized_extra = _safe_serialize(extra or {})
+    sanitized_provider = _safe_serialize(provider)
 
     record = {
         "timestamp": datetime.utcnow().isoformat(timespec="milliseconds") + "Z",
         "tenant_id": tenant_id,
         "llm_name": llm_name,
         "model_name": model_name,
-        "provider": provider,
+        "provider": sanitized_provider,
         "mode": mode,
         "full_prompt": {
             "system": system_prompt,
