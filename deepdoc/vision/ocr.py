@@ -78,13 +78,13 @@ def load_model(model_dir, nm, device_id: int | None = None):
         return loaded_model
 
     if not os.path.exists(model_file_path):
-        raise ValueError("not find model file path {}".format(
-            model_file_path))
+        raise ValueError("not find model file path {}".format(model_file_path))
 
     def cuda_is_available():
         try:
             import torch
-            if torch.cuda.is_available() and torch.cuda.device_count() > device_id:
+            target_device = 0 if device_id is None else device_id
+            if torch.cuda.is_available() and torch.cuda.device_count() > target_device:
                 return True
         except Exception:
             return False
@@ -99,27 +99,64 @@ def load_model(model_dir, nm, device_id: int | None = None):
     # https://github.com/microsoft/onnxruntime/issues/9509#issuecomment-951546580
     # Shrink GPU memory after execution
     run_options = ort.RunOptions()
+    shrink_target = None
     if cuda_is_available():
+        target_device = 0 if device_id is None else device_id
         cuda_provider_options = {
-            "device_id": device_id, # Use specific GPU
-            "gpu_mem_limit": 512 * 1024 * 1024, # Limit gpu memory
+            "device_id": target_device,  # Use specific GPU
+            "gpu_mem_limit": 512 * 1024 * 1024,  # Limit gpu memory
             "arena_extend_strategy": "kNextPowerOfTwo",  # gpu memory allocation strategy
         }
-        sess = ort.InferenceSession(
-            model_file_path,
-            options=options,
-            providers=['CUDAExecutionProvider'],
-            provider_options=[cuda_provider_options]
+        try:
+            sess = ort.InferenceSession(
+                model_file_path,
+                options=options,
+                providers=['CUDAExecutionProvider', 'CPUExecutionProvider'],
+                provider_options=[cuda_provider_options, {}],
             )
-        run_options.add_run_config_entry("memory.enable_memory_arena_shrinkage", "gpu:" + str(device_id))
-        logging.info(f"load_model {model_file_path} uses GPU")
+        except Exception:
+            logging.exception(
+                "load_model %s failed to initialize CUDAExecutionProvider, falling back to CPU",
+                model_file_path,
+            )
+            sess = ort.InferenceSession(
+                model_file_path,
+                options=options,
+                providers=['CPUExecutionProvider'],
+            )
+        else:
+            if 'CUDAExecutionProvider' in sess.get_providers():
+                shrink_target = f"cuda:{target_device}"
+                logging.info(f"load_model {model_file_path} uses GPU")
+            else:
+                logging.warning(
+                    "load_model %s initialized without CUDAExecutionProvider, falling back to CPU",
+                    model_file_path,
+                )
     else:
         sess = ort.InferenceSession(
             model_file_path,
             options=options,
-            providers=['CPUExecutionProvider'])
-        run_options.add_run_config_entry("memory.enable_memory_arena_shrinkage", "cpu")
+            providers=['CPUExecutionProvider'],
+        )
+
+    if shrink_target is None and 'CPUExecutionProvider' in sess.get_providers():
+        shrink_target = 'cpu'
+
+    if shrink_target:
+        try:
+            run_options.add_run_config_entry("memory.enable_memory_arena_shrinkage", shrink_target)
+        except Exception:
+            logging.warning(
+                "Failed to enable memory arena shrinkage (%s) for %s",
+                shrink_target,
+                model_file_path,
+                exc_info=True,
+            )
+
+    if shrink_target == 'cpu':
         logging.info(f"load_model {model_file_path} uses CPU")
+
     loaded_model = (sess, run_options)
     loaded_models[model_cached_tag] = loaded_model
     return loaded_model
