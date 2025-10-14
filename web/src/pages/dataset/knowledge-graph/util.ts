@@ -1,5 +1,4 @@
 import { isEmpty } from 'lodash';
-import { v4 as uuid } from 'uuid';
 
 class KeyGenerator {
   idx = 0;
@@ -63,32 +62,97 @@ export const isDataExist = (data: any) => {
   );
 };
 
-const findCombo = (communities: string[]) => {
-  const combo = Array.isArray(communities) ? communities[0] : undefined;
-  return combo;
+const normalizeComboId = (label: string) => {
+  const cleaned = label
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+
+  return `combo-${cleaned || 'group'}`;
 };
 
-export const buildNodesAndCombos = (nodes: any[]) => {
-  const combos: any[] = [];
-  nodes.forEach((x) => {
-    const combo = findCombo(x?.communities);
-    if (combo && combos.every((y) => y.data.label !== combo)) {
-      combos.push({
-        isCombo: true,
-        id: uuid(),
-        data: {
-          label: combo,
-        },
+const findCombo = (communities: string[]) => {
+  if (!Array.isArray(communities) || communities.length === 0) {
+    return undefined;
+  }
+
+  const first = communities[0];
+  if (typeof first === 'string') {
+    return first;
+  }
+
+  return String(first ?? '').trim() || undefined;
+};
+
+const stripCombo = (node: any) => {
+  if (!node || typeof node !== 'object') {
+    return node;
+  }
+
+  const clone = { ...node } as Record<string, unknown>;
+  if ('combo' in clone) {
+    delete clone.combo;
+  }
+
+  return clone;
+};
+
+export interface GraphGroupResult {
+  nodes: any[];
+  combos: any[];
+  hasCombos: boolean;
+}
+
+export const buildNodesAndCombos = (nodes: any[]): GraphGroupResult => {
+  if (!Array.isArray(nodes) || nodes.length === 0) {
+    return { nodes: [], combos: [], hasCombos: false };
+  }
+
+  const comboMap = new Map<string, { id: string; label: string }>();
+
+  nodes.forEach((node) => {
+    const comboLabel = findCombo(node?.communities);
+    if (!comboLabel) {
+      return;
+    }
+
+    if (!comboMap.has(comboLabel)) {
+      comboMap.set(comboLabel, {
+        id: normalizeComboId(comboLabel),
+        label: comboLabel,
       });
     }
   });
 
-  const nextNodes = nodes.map((x) => {
+  const combos = Array.from(comboMap.values()).map(({ id, label }) => ({
+    isCombo: true,
+    id,
+    label,
+    data: {
+      label,
+    },
+  }));
+
+  const nodesWithCombos = nodes.map((node) => {
+    const comboLabel = findCombo(node?.communities);
+    if (!comboLabel) {
+      return stripCombo(node);
+    }
+
+    const combo = comboMap.get(comboLabel);
+    if (!combo) {
+      return stripCombo(node);
+    }
+
     return {
-      ...x,
-      combo: combos.find((y) => y.data.label === findCombo(x?.communities))?.id,
+      ...node,
+      combo: combo.id,
     };
   });
 
-  return { nodes: nextNodes, combos };
+  return {
+    nodes: nodesWithCombos,
+    combos,
+    hasCombos: combos.length > 0,
+  };
 };

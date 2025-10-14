@@ -31,32 +31,48 @@ const ForceGraph = ({ data, show }: IProps) => {
 
   const nextData = useMemo(() => {
     if (isEmpty(data)) {
-      return { nodes: [], edges: [], combos: [] };
+      return { nodes: [], edges: [], combos: [], hasCombos: false };
     }
 
     const parsed = typeof data === 'string' ? safeJSONParse(data) : data;
     const nodes = Array.isArray(parsed?.nodes) ? parsed.nodes : [];
     const edges = Array.isArray(parsed?.edges) ? parsed.edges : [];
-    const mi = buildNodesAndCombos(nodes);
+    const { nodes: nextNodes, combos, hasCombos } = buildNodesAndCombos(nodes);
 
-    return { edges, ...mi };
+    return { edges, nodes: nextNodes, combos, hasCombos };
   }, [data]);
 
   const render = useCallback(() => {
+    const { nodes, edges, combos, hasCombos } = nextData;
+    const behaviors = [
+      'drag-element',
+      'drag-canvas',
+      'zoom-canvas',
+      ...(hasCombos ? ['collapse-expand'] : []),
+      {
+        type: 'hover-activate',
+        degree: 1, // 👈🏻 Activate relations.
+      },
+    ];
+
+    const layout = hasCombos
+      ? {
+          type: 'combo-combined' as const,
+          preventOverlap: true,
+          comboPadding: 1,
+          spacing: 100,
+        }
+      : {
+          type: 'force2' as const,
+          preventOverlap: true,
+          linkDistance: 200,
+        };
+
     const graph = new Graph({
       container: containerRef.current!,
       autoFit: 'view',
       autoResize: true,
-      behaviors: [
-        'drag-element',
-        'drag-canvas',
-        'zoom-canvas',
-        'collapse-expand',
-        {
-          type: 'hover-activate',
-          degree: 1, // 👈🏻 Activate relations.
-        },
-      ],
+      behaviors,
       plugins: [
         {
           type: 'tooltip',
@@ -85,12 +101,7 @@ const ForceGraph = ({ data, show }: IProps) => {
           },
         },
       ],
-      layout: {
-        type: 'combo-combined',
-        preventOverlap: true,
-        comboPadding: 1,
-        spacing: 100,
-      },
+      layout,
       node: {
         style: {
           size: 150,
@@ -127,7 +138,7 @@ const ForceGraph = ({ data, show }: IProps) => {
 
     graphRef.current = graph;
 
-    graph.setData(nextData);
+    graph.setData({ nodes, edges, combos });
 
     graph.render();
   }, [nextData]);
