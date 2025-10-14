@@ -64,13 +64,16 @@ const ForceGraph = ({ data, show }: IProps) => {
           nodeSpacing: 80,
         }
       : {
-          type: 'force2' as const,
+          type: 'force' as const,
           preventOverlap: true,
-          linkDistance: 240,
-          nodeStrength: -200,
+          nodeSpacing: 80,
+          linkDistance: 260,
+          nodeStrength: -240,
           edgeStrength: 0.2,
+          damping: 0.9,
+          gravity: 50,
           minMovement: 0.1,
-          maxIteration: 600,
+          maxIteration: 800,
         };
 
     const graph = new Graph({
