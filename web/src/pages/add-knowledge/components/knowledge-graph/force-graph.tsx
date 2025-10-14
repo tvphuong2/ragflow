@@ -11,6 +11,15 @@ const TooltipColorMap = {
   edge: 'blue',
 };
 
+function safeJSONParse(value: string) {
+  try {
+    return JSON.parse(value);
+  } catch (error) {
+    console.error('[ForceGraph] Failed to parse graph payload', error);
+    return {};
+  }
+}
+
 interface IProps {
   data: any;
   show: boolean;
@@ -21,12 +30,16 @@ const ForceGraph = ({ data, show }: IProps) => {
   const graphRef = useRef<Graph | null>(null);
 
   const nextData = useMemo(() => {
-    if (!isEmpty(data)) {
-      const graphData = data;
-      const mi = buildNodesAndCombos(graphData.nodes);
-      return { edges: graphData.edges, ...mi };
+    if (isEmpty(data)) {
+      return { nodes: [], edges: [], combos: [] };
     }
-    return { nodes: [], edges: [] };
+
+    const parsed = typeof data === 'string' ? safeJSONParse(data) : data;
+    const nodes = Array.isArray(parsed?.nodes) ? parsed.nodes : [];
+    const edges = Array.isArray(parsed?.edges) ? parsed.edges : [];
+    const mi = buildNodesAndCombos(nodes);
+
+    return { edges, ...mi };
   }, [data]);
 
   const render = useCallback(() => {
@@ -120,10 +133,23 @@ const ForceGraph = ({ data, show }: IProps) => {
   }, [nextData]);
 
   useEffect(() => {
-    if (!isEmpty(data)) {
-      render();
+    if (!containerRef.current) {
+      return;
     }
-  }, [data, render]);
+
+    if (isEmpty(nextData.nodes) && isEmpty(nextData.edges)) {
+      graphRef.current?.destroy();
+      graphRef.current = null;
+      return;
+    }
+
+    render();
+
+    return () => {
+      graphRef.current?.destroy();
+      graphRef.current = null;
+    };
+  }, [nextData, render]);
 
   return (
     <div
