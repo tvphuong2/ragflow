@@ -150,9 +150,11 @@ export const buildNodesAndCombos = (nodes: any[]): GraphGroupResult => {
     };
   });
 
+  const hasCombos = combos.length > 1;
+
   return {
-    nodes: nodesWithCombos,
-    combos,
-    hasCombos: combos.length > 0,
+    nodes: hasCombos ? nodesWithCombos : nodesWithCombos.map(stripCombo),
+    combos: hasCombos ? combos : [],
+    hasCombos,
   };
 };

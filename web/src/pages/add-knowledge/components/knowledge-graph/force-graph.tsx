@@ -59,13 +59,18 @@ const ForceGraph = ({ data, show }: IProps) => {
       ? {
           type: 'combo-combined' as const,
           preventOverlap: true,
-          comboPadding: 1,
-          spacing: 100,
+          comboPadding: 24,
+          spacing: 160,
+          nodeSpacing: 80,
         }
       : {
           type: 'force2' as const,
           preventOverlap: true,
-          linkDistance: 200,
+          linkDistance: 240,
+          nodeStrength: -200,
+          edgeStrength: 0.2,
+          minMovement: 0.1,
+          maxIteration: 600,
         };
 
     const graph = new Graph({
@@ -104,12 +109,10 @@ const ForceGraph = ({ data, show }: IProps) => {
       layout,
       node: {
         style: {
-          size: 150,
+          size: 96,
           labelText: (d) => d.id,
-          // labelPadding: 30,
-          labelFontSize: 40,
-          //   labelOffsetX: 20,
-          labelOffsetY: 20,
+          labelFontSize: 22,
+          labelOffsetY: 12,
           labelPlacement: 'center',
           labelWordWrap: true,
         },
@@ -141,6 +144,7 @@ const ForceGraph = ({ data, show }: IProps) => {
     graph.setData({ nodes, edges, combos });
 
     graph.render();
+    graph.fitView(16);
   }, [nextData]);
 
   useEffect(() => {
