@@ -451,11 +451,48 @@ class RAGFlowPdfParser:
                 continue
             # merge up and down
             b["bottom"] = b_["bottom"]
-            b["text"] += b_["text"]
+            b["text"] = self._merge_text_content(b.get("text", ""), b_.get("text", ""))
             b["x0"] = min(b["x0"], b_["x0"])
             b["x1"] = max(b["x1"], b_["x1"])
             bxs.pop(i + 1)
         self.boxes = bxs
+
+    @staticmethod
+    def _merge_text_content(left: str, right: str) -> str:
+        """Join vertically adjacent text without fragmenting Vietnamese syllables."""
+
+        if not left:
+            return right
+        if not right:
+            return left
+
+        if RAGFlowPdfParser._should_insert_space(left, right):
+            return f"{left} {right}"
+        return left + right
+
+    @staticmethod
+    def _should_insert_space(left: str, right: str) -> bool:
+        """Determine whether a separating space is needed between two fragments."""
+
+        if not left or not right:
+            return False
+
+        left_char = left[-1]
+        right_char = right[0]
+
+        if left_char.isspace() or right_char.isspace():
+            return False
+
+        if left_char in "-‐‑‒–—―/\\":
+            return False
+
+        if right_char in ",.;:!?)]}››“”’'" or left_char in "([{‹‹“”'\"":
+            return False
+
+        if left_char.isalnum() and right_char.isalnum():
+            return True
+
+        return False
 
     def _concat_downward(self, concat_between_pages=True):
         self.boxes = Recognizer.sort_Y_firstly(self.boxes, 0)
