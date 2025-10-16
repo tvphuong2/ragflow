@@ -172,7 +172,6 @@ VIETNAMESE_BOUNDARY_CHARS = set(
     "àáạảãăằắặẳẵâầấậẩẫèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ"
     "ÀÁẠẢÃĂẰẮẶẲẴÂẦẤẬẨẪÈÉẸẺẼÊỀẾỆỂỄÌÍỊỈĨÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠÙÚỤỦŨƯỪỨỰỬỮỲÝỴỶỸĐ"
 )
-_ASCII_BOUNDARY_CHARS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 _LEFT_BOUNDARY_BLOCKERS = {"-", "—", "–", "(", "[", "{", "/"}
 
 TOC_PATTERNS = [r"\bMục lục\b", r"\bTable of Contents\b", r"\bContents\b"]
@@ -190,10 +189,13 @@ DESCRIPTION_PATTERNS = [
 SECTION_PATTERNS = TOC_PATTERNS + PREFACE_PATTERNS + DESCRIPTION_PATTERNS
 
 
+_VIETNAMESE_SPACE_TRIGGERS = VIETNAMESE_BOUNDARY_CHARS | {"đ", "Đ"}
+
+
 def _is_word_leading_char(ch: str) -> bool:
     if not ch:
         return False
-    return ch.isalpha() or ch in VIETNAMESE_BOUNDARY_CHARS or ch in _ASCII_BOUNDARY_CHARS
+    return ch in _VIETNAMESE_SPACE_TRIGGERS
 
 
 def _merge_fragmented_latin_sequences(text: str) -> str:
