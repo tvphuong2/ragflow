@@ -85,6 +85,7 @@ export default {
       noMoreData: 'Tất cả chỉ có thế, không còn gì nữa',
     },
     knowledgeDetails: {
+      deepDocVn: 'DeepDoc (Tiếng Việt)',
       dataset: 'Dữ liệu',
       testing: 'Kiểm tra truy hồi',
       files: 'Các tệp',

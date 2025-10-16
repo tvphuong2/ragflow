@@ -361,6 +361,12 @@ class TestUpdateDocumentParserConfig:
             ),
             (
                 "naive",
+                {"layout_recognize": "DeepDocVN"},
+                0,
+                "",
+            ),
+            (
+                "naive",
                 {"layout_recognize": "Naive"},
                 0,
                 "",

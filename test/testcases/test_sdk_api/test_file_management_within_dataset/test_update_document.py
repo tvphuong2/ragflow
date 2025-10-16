@@ -247,6 +247,7 @@ class TestUpdateDocumentParserConfig:
                 marks=pytest.mark.skip(reason="issues/6098"),
             ),
             ("naive", {"layout_recognize": "DeepDOC"}, ""),
+            ("naive", {"layout_recognize": "DeepDocVN"}, ""),
             ("naive", {"layout_recognize": "Naive"}, ""),
             ("naive", {"html4excel": True}, ""),
             ("naive", {"html4excel": False}, ""),

@@ -495,7 +495,8 @@ curl --request POST \
     - `"html4excel"`: `bool` Indicates whether to convert Excel documents into HTML format.
       - Defaults to `false`
     - `"layout_recognize"`: `string`
-      - Defaults to `DeepDOC`
+      - Defaults to `DeepDocVN`
+      - Accepts `DeepDocVN`, `DeepDOC`, or `Plain Text`
     - `"tag_kb_ids"`: `array<string>` refer to [Use tag set](https://ragflow.io/docs/dev/use_tag_sets)
       - Must include a list of dataset IDs, where each dataset is parsed using the ​​Tag Chunking Method
     - `"task_page_size"`: `int` For PDF only.
@@ -717,7 +718,7 @@ curl --request PUT \
     - `"html4excel"`: `bool` Indicates whether to convert Excel documents into HTML format.
       - Defaults to `false`
     - `"layout_recognize"`: `string`
-      - Defaults to `DeepDOC`
+      - Defaults to `DeepDocVN`
     - `"tag_kb_ids"`: `array<string>` refer to [Use tag set](https://ragflow.io/docs/dev/use_tag_sets)
       - Must include a list of dataset IDs, where each dataset is parsed using the ​​Tag Chunking Method
     - `"task_page_size"`: `int` For PDF only.

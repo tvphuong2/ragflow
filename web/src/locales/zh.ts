@@ -94,6 +94,7 @@ export default {
       noMoreData: '没有更多数据了',
     },
     knowledgeDetails: {
+      deepDocVn: 'DeepDoc（越南语）',
       generate: '生成',
       raptor: 'Raptor',
       knowledgeGraph: '知识图谱',

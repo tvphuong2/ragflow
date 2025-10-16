@@ -84,6 +84,7 @@ export default {
       noMoreData: `That's all. Nothing more.`,
     },
     knowledgeDetails: {
+      deepDocVn: 'DeepDoc（越南語）',
       dataset: '數據集',
       testing: '檢索測試',
       configuration: '配置',

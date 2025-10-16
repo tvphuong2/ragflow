@@ -15,6 +15,7 @@ import { RAGFlowSelect } from './ui/select';
 
 export const enum DocumentType {
   DeepDOC = 'DeepDOC',
+  DeepDocVN = 'DeepDocVN',
   PlainText = 'Plain Text',
 }
 
@@ -25,10 +26,20 @@ export function LayoutRecognizeFormField() {
   const allOptions = useSelectLlmOptionsByModelType();
 
   const options = useMemo(() => {
-    const list = [DocumentType.DeepDOC, DocumentType.PlainText].map((x) => ({
-      label: x === DocumentType.PlainText ? t(camelCase(x)) : 'DeepDoc',
-      value: x,
-    }));
+    const list = [
+      {
+        label: t('deepDocVn'),
+        value: DocumentType.DeepDocVN,
+      },
+      {
+        label: 'DeepDoc',
+        value: DocumentType.DeepDOC,
+      },
+      {
+        label: t(camelCase(DocumentType.PlainText)),
+        value: DocumentType.PlainText,
+      },
+    ];
 
     const image2TextList = allOptions[LlmModelType.Image2text].map((x) => {
       return {
@@ -60,7 +71,7 @@ export function LayoutRecognizeFormField() {
           form.setValue(
             'parser_config.layout_recognize',
             form.formState.defaultValues?.parser_config?.layout_recognize ??
-              'DeepDOC',
+              'DeepDocVN',
           );
         }
         return (

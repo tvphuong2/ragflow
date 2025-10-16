@@ -58,6 +58,10 @@ class FrontLine:
 
 TAG_PATTERN = re.compile(r"@@[0-9-]+\t[0-9.\t]+##")
 PAGE_PATTERN = re.compile(r"@@([0-9-]+)\t")
+FRAGMENTED_SEQUENCE_PATTERN = re.compile(
+    r"(?i)(?:[A-Za-zÀ-ỹĐđ0-9]+(?:\s+[A-Za-zÀ-ỹĐđ0-9]+)+)"
+)
+NUMERIC_HEADING_PATTERN = re.compile(r"^\s*(\d+(?:\.\d+)*)(?:\s+|[.)\-–—]\s*)")
 
 VIETNAMESE_ONSETS = [
     "ngh",
@@ -192,6 +196,37 @@ def _is_word_leading_char(ch: str) -> bool:
     return ch.isalpha() or ch in VIETNAMESE_BOUNDARY_CHARS or ch in _ASCII_BOUNDARY_CHARS
 
 
+def _merge_fragmented_latin_sequences(text: str) -> str:
+    if not text:
+        return text
+
+    def _should_merge(segment: str) -> bool:
+        tokens = segment.split()
+        if len(tokens) < 3:
+            return False
+
+        cleaned_tokens = [re.sub(r"[^A-Za-zÀ-ỹĐđ0-9]", "", token) for token in tokens]
+        cleaned_tokens = [token for token in cleaned_tokens if token]
+        if len(cleaned_tokens) < 3:
+            return False
+
+        short_tokens = sum(1 for token in cleaned_tokens if len(token) <= 2)
+        return short_tokens >= len(cleaned_tokens) - 1
+
+    previous = None
+    merged = text
+    while previous != merged:
+        previous = merged
+
+        def _replacer(match: re.Match[str]) -> str:
+            segment = match.group(0)
+            return "".join(segment.split()) if _should_merge(segment) else segment
+
+        merged = FRAGMENTED_SEQUENCE_PATTERN.sub(_replacer, merged)
+
+    return merged
+
+
 def _fix_vietnamese_spacing(text: str) -> str:
     if not text:
         return text
@@ -235,6 +270,7 @@ def _fix_vietnamese_spacing(text: str) -> str:
 def _split_text_and_tags(text: str) -> tuple[str, str]:
     tags = "".join(TAG_PATTERN.findall(text))
     clean = TAG_PATTERN.sub("", text)
+    clean = _merge_fragmented_latin_sequences(clean)
     clean = _fix_vietnamese_spacing(clean)
     return clean.strip(), tags
 
@@ -379,6 +415,18 @@ def _determine_heading_threshold(levels: Iterable[int], bull: int, depth: int = 
     return unique_levels[min(depth - 1, len(unique_levels) - 1)]
 
 
+def _infer_numeric_heading_level(text: str) -> Optional[int]:
+    match = NUMERIC_HEADING_PATTERN.match(text)
+    if not match:
+        return None
+
+    numbering = match.group(1)
+    segments = [segment for segment in numbering.split(".") if segment]
+    if not segments:
+        return None
+    return min(len(segments), 6)
+
+
 def _compose_chunk(
     stack: List[tuple[int, str, str]],
     body_lines: List[tuple[str, str]],
@@ -413,6 +461,7 @@ def _build_markdown_chunks(
 ) -> List[str]:
     chunks: List[str] = []
     stack: List[tuple[int, str, str]] = []
+    last_headings: dict[int, tuple[int, str, str]] = {}
     body_lines: List[tuple[str, str]] = []
     token_budget = 0
 
@@ -429,9 +478,15 @@ def _build_markdown_chunks(
                 body_lines = []
                 token_budget = 0
 
-            while stack and stack[-1][0] >= (line.level or 0):
-                stack.pop()
-            stack.append((line.level or (len(stack) + 1), line.text, line.tags))
+            level = line.level or (len(stack) + 1)
+            for existing_level in sorted(list(last_headings.keys()), reverse=True):
+                if existing_level >= level:
+                    last_headings.pop(existing_level, None)
+
+            if line.text.strip():
+                last_headings[level] = (level, line.text, line.tags)
+
+            stack = [last_headings[lvl] for lvl in sorted(last_headings.keys())]
             continue
 
         clean_text = line.text.strip()
@@ -461,6 +516,31 @@ class Pdf(laws.Pdf):
     def __init__(self):
         super().__init__()
         self.model_speciess = ParserType.POLICY.value
+
+
+class PdfDeepDocVN(Pdf):
+    def __call__(
+        self,
+        filename,
+        binary=None,
+        from_page: int = 0,
+        to_page: int = 100000,
+        zoomin: int = 3,
+        callback=None,
+    ):
+        sections, metadata = super().__call__(
+            filename,
+            binary=binary,
+            from_page=from_page,
+            to_page=to_page,
+            zoomin=zoomin,
+            callback=callback,
+        )
+        normalized_sections = [
+            (_merge_fragmented_latin_sequences(text), tags)
+            for text, tags in sections
+        ]
+        return normalized_sections, metadata
 
 
 class PolicyDocx(DocxParser):
@@ -572,6 +652,10 @@ def _build_lines_from_sections(
         if bull < 0:
             level = None
 
+        inferred_level = _infer_numeric_heading_level(clean)
+        if inferred_level is not None:
+            level = inferred_level if level is None else min(level, inferred_level)
+
         lines.append(LineEntry(level=level, text=clean, tags=tags))
 
     return lines
@@ -593,7 +677,7 @@ def chunk(
         {
             "chunk_token_num": 512,
             "delimiter": "\n!?。；！？",
-            "layout_recognize": "DeepDOC",
+            "layout_recognize": "DeepDocVN",
         },
     )
     chunk_token_num = parser_config.get("chunk_token_num", 512)
@@ -617,9 +701,13 @@ def chunk(
         callback(0.7, "Finish parsing.")
 
     elif re.search(r"\.pdf$", filename, re.IGNORECASE):
-        pdf_parser = Pdf()
-        if parser_config.get("layout_recognize", "DeepDOC") == "Plain Text":
+        layout_choice = parser_config.get("layout_recognize", "DeepDocVN")
+        if layout_choice == "Plain Text":
             pdf_parser = PlainParser()
+        elif layout_choice == "DeepDocVN":
+            pdf_parser = PdfDeepDocVN()
+        else:
+            pdf_parser = Pdf()
         callback(0.1, "Start to parse.")
         sections_raw = []
         result = pdf_parser(
@@ -689,4 +777,4 @@ def chunk(
     return tokenize_chunks(chunks, doc, eng, pdf_parser)
 
 
-__all__ = ["chunk", "Pdf"]
+__all__ = ["chunk", "Pdf", "PdfDeepDocVN"]
