@@ -146,12 +146,13 @@ Specifies who can access the dataset to create. Available options:
 The chunking method of the dataset to create. Available options:
 
 - `"naive"`: General (default)
-- `"manual`: Manual
+- `"manual"`: Manual
 - `"qa"`: Q&A
 - `"table"`: Table
 - `"paper"`: Paper
 - `"book"`: Book
 - `"laws"`: Laws
+- `"policy"`: Policy
 - `"presentation"`: Presentation
 - `"picture"`: Picture
 - `"one"`: One
@@ -171,9 +172,11 @@ The parser configuration of the dataset. A `ParserConfig` object's attributes va
   `None`
 - `chunk_method`=`"paper"`:  
   `{"raptor": {"use_raptor": False}}`
-- `chunk_method`=`"book"`:  
+- `chunk_method`=`"book"`:
   `{"raptor": {"use_raptor": False}}`
-- `chunk_method`=`"laws"`:  
+- `chunk_method`=`"laws"`:
+  `{"raptor": {"use_raptor": False}}`
+- `chunk_method`=`"policy"`:
   `{"raptor": {"use_raptor": False}}`
 - `chunk_method`=`"picture"`:  
   `None`
@@ -340,6 +343,7 @@ A dictionary representing the attributes to update, with the following keys:
   - `"book"`: Book
   - `"email"`: Email
   - `"laws"`: Laws
+  - `"policy"`: Policy
   - `"manual"`: Manual
   - `"one"`: One
   - `"paper"`: Paper
@@ -420,12 +424,13 @@ A dictionary representing the attributes to update, with the following keys:
 - `"meta_fields"`: `dict[str, Any]` The meta fields of the document.
 - `"chunk_method"`: `str` The parsing method to apply to the document.
   - `"naive"`: General
-  - `"manual`: Manual
+  - `"manual"`: Manual
   - `"qa"`: Q&A
   - `"table"`: Table
   - `"paper"`: Paper
   - `"book"`: Book
   - `"laws"`: Laws
+  - `"policy"`: Policy
   - `"presentation"`: Presentation
   - `"picture"`: Picture
   - `"one"`: One
@@ -441,9 +446,11 @@ A dictionary representing the attributes to update, with the following keys:
     `None`
   - `chunk_method`=`"paper"`:  
     `{"raptor": {"use_raptor": False}}`
-  - `chunk_method`=`"book"`:  
+  - `chunk_method`=`"book"`:
     `{"raptor": {"use_raptor": False}}`
-  - `chunk_method`=`"laws"`:  
+  - `chunk_method`=`"laws"`:
+    `{"raptor": {"use_raptor": False}}`
+  - `chunk_method`=`"policy"`:
     `{"raptor": {"use_raptor": False}}`
   - `chunk_method`=`"presentation"`:  
     `{"raptor": {"use_raptor": False}}`
@@ -596,11 +603,13 @@ A `Document` object contains the following attributes:
     `None`
   - `chunk_method`=`"paper"`:  
     `{"raptor": {"use_raptor": False}}`
-  - `chunk_method`=`"book"`:  
+  - `chunk_method`=`"book"`:
     `{"raptor": {"use_raptor": False}}`
-  - `chunk_method`=`"laws"`:  
+  - `chunk_method`=`"laws"`:
     `{"raptor": {"use_raptor": False}}`
-  - `chunk_method`=`"presentation"`:  
+  - `chunk_method`=`"policy"`:
+    `{"raptor": {"use_raptor": False}}`
+  - `chunk_method`=`"presentation"`:
     `{"raptor": {"use_raptor": False}}`
   - `chunk_method`=`"picure"`:  
     `None`

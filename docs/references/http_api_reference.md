@@ -465,6 +465,7 @@ curl --request POST \
   - `"book"`: Book
   - `"email"`: Email
   - `"laws"`: Laws
+  - `"policy"`: Policy
   - `"manual"`: Manual
   - `"one"`: One
   - `"paper"`: Paper
@@ -687,6 +688,7 @@ curl --request PUT \
   - `"book"`: Book
   - `"email"`: Email
   - `"laws"`: Laws
+  - `"policy"`: Policy
   - `"manual"`: Manual
   - `"one"`: One
   - `"paper"`: Paper
@@ -725,7 +727,7 @@ curl --request PUT \
       - Defaults to: `{"use_raptor": false}`
     - `"graphrag"`: `object` GRAPHRAG-specific settings.
       - Defaults to: `{"use_graphrag": false}`
-  - If `"chunk_method"` is `"qa"`, `"manuel"`, `"paper"`, `"book"`, `"laws"`, or `"presentation"`, the `"parser_config"` object contains the following attribute:  
+  - If `"chunk_method"` is `"qa"`, `"manuel"`, `"paper"`, `"book"`, `"laws"`, `"policy"`, or `"presentation"`, the `"parser_config"` object contains the following attribute:
     - `"raptor"`: `object` RAPTOR-specific settings.
       - Defaults to: `{"use_raptor": false}`.
   - If `"chunk_method"` is `"table"`, `"picture"`, `"one"`, or `"email"`, `"parser_config"` is an empty JSON object.
@@ -1120,7 +1122,7 @@ curl --request PUT \
     - `"delimiter"`: Defaults to `"\n"`.
     - `"task_page_size"`: Defaults to `12`. For PDF only.
     - `"raptor"`: RAPTOR-specific settings. Defaults to: `{"use_raptor": false}`.
-  - If `"chunk_method"` is `"qa"`, `"manuel"`, `"paper"`, `"book"`, `"laws"`, or `"presentation"`, the `"parser_config"` object contains the following attribute:
+  - If `"chunk_method"` is `"qa"`, `"manuel"`, `"paper"`, `"book"`, `"laws"`, `"policy"`, or `"presentation"`, the `"parser_config"` object contains the following attribute:
     - `"raptor"`: RAPTOR-specific settings. Defaults to: `{"use_raptor": false}`.
   - If `"chunk_method"` is `"table"`, `"picture"`, `"one"`, or `"email"`, `"parser_config"` is an empty JSON object.
 

@@ -224,6 +224,9 @@ export default {
       </p><p>
       Khối có độ chi tiết nhất quán với 'ARTICLE', đảm bảo tất cả văn bản cấp trên được bao gồm trong khối.
       </p>`,
+      policy: `<p>Các định dạng tệp được hỗ trợ là <b>DOCX</b>, <b>PDF</b>, <b>TXT</b>.</p><p>
+      Các tài liệu chính sách được phân đoạn theo hệ thống tiêu đề để mỗi khối đều chứa đầy đủ dàn ý markdown của phần tương ứng.</p><p>
+      Bộ phân tích cũng trích xuất phần mở đầu như tiêu đề, mô tả, lời nói đầu và mục lục (nếu xuất hiện ở vài trang đầu) để cung cấp ngữ cảnh chính xác cho truy hồi.</p>`,
       manual: `<p>Chỉ hỗ trợ <b>PDF</b>.</p><p>
       Chúng tôi giả định rằng sách hướng dẫn có cấu trúc phân cấp theo mục, sử dụng tiêu đề mục thấp nhất làm đơn vị cơ bản để phân đoạn tài liệu. Do đó, các hình ảnh và bảng trong cùng một mục sẽ không bị tách rời, điều này có thể dẫn đến kích thước khối lớn hơn.
       </p>`,

@@ -14,6 +14,7 @@ import { NaiveConfiguration } from './configuration/naive';
 import { OneConfiguration } from './configuration/one';
 import { PaperConfiguration } from './configuration/paper';
 import { PictureConfiguration } from './configuration/picture';
+import { PolicyConfiguration } from './configuration/policy';
 import { PresentationConfiguration } from './configuration/presentation';
 import { QAConfiguration } from './configuration/qa';
 import { ResumeConfiguration } from './configuration/resume';
@@ -30,6 +31,7 @@ const ConfigurationComponentMap = {
   [DocumentParserType.Paper]: PaperConfiguration,
   [DocumentParserType.Book]: BookConfiguration,
   [DocumentParserType.Laws]: LawsConfiguration,
+  [DocumentParserType.Policy]: PolicyConfiguration,
   [DocumentParserType.Presentation]: PresentationConfiguration,
   [DocumentParserType.Picture]: PictureConfiguration,
   [DocumentParserType.One]: OneConfiguration,

@@ -287,6 +287,7 @@ class TestDatasetUpdate:
             "book",
             "email",
             "laws",
+            "policy",
             "manual",
             "one",
             "paper",
@@ -296,7 +297,7 @@ class TestDatasetUpdate:
             "table",
             "tag",
         ],
-        ids=["naive", "book", "email", "laws", "manual", "one", "paper", "picture", "presentation", "qa", "table", "tag"],
+        ids=["naive", "book", "email", "laws", "policy", "manual", "one", "paper", "picture", "presentation", "qa", "table", "tag"],
     )
     def test_chunk_method(self, client, add_dataset_func, chunk_method):
         dataset = add_dataset_func
@@ -320,14 +321,14 @@ class TestDatasetUpdate:
         dataset = add_dataset_func
         with pytest.raises(Exception) as excinfo:
             dataset.update({"chunk_method": chunk_method})
-        assert "Input should be 'naive', 'book', 'email', 'laws', 'manual', 'one', 'paper', 'picture', 'presentation', 'qa', 'table' or 'tag'" in str(excinfo.value), str(excinfo.value)
+        assert "Input should be 'naive', 'book', 'email', 'laws', 'policy', 'manual', 'one', 'paper', 'picture', 'presentation', 'qa', 'table' or 'tag'" in str(excinfo.value), str(excinfo.value)
 
     @pytest.mark.p3
     def test_chunk_method_none(self, add_dataset_func):
         dataset = add_dataset_func
         with pytest.raises(Exception) as excinfo:
             dataset.update({"chunk_method": None})
-        assert "Input should be 'naive', 'book', 'email', 'laws', 'manual', 'one', 'paper', 'picture', 'presentation', 'qa', 'table' or 'tag'" in str(excinfo.value), str(excinfo.value)
+        assert "Input should be 'naive', 'book', 'email', 'laws', 'policy', 'manual', 'one', 'paper', 'picture', 'presentation', 'qa', 'table' or 'tag'" in str(excinfo.value), str(excinfo.value)
 
     @pytest.mark.skipif(os.getenv("DOC_ENGINE") == "infinity", reason="#8208")
     @pytest.mark.p2

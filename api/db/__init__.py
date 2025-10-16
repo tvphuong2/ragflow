@@ -90,6 +90,7 @@ class ParserType(StrEnum):
     PAPER = "paper"
     RESUME = "resume"
     BOOK = "book"
+    POLICY = "policy"
     QA = "qa"
     TABLE = "table"
     NAIVE = "naive"
