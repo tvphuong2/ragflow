@@ -168,6 +168,8 @@ VIETNAMESE_BOUNDARY_CHARS = set(
     "àáạảãăằắặẳẵâầấậẩẫèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ"
     "ÀÁẠẢÃĂẰẮẶẲẴÂẦẤẬẨẪÈÉẸẺẼÊỀẾỆỂỄÌÍỊỈĨÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠÙÚỤỦŨƯỪỨỰỬỮỲÝỴỶỸĐ"
 )
+_ASCII_BOUNDARY_CHARS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+_LEFT_BOUNDARY_BLOCKERS = {"-", "—", "–", "(", "[", "{", "/"}
 
 TOC_PATTERNS = [r"\bMục lục\b", r"\bTable of Contents\b", r"\bContents\b"]
 PREFACE_PATTERNS = [r"\bLời nói đầu\b", r"\bLời mở đầu\b", r"\bPreface\b"]
@@ -184,6 +186,12 @@ DESCRIPTION_PATTERNS = [
 SECTION_PATTERNS = TOC_PATTERNS + PREFACE_PATTERNS + DESCRIPTION_PATTERNS
 
 
+def _is_word_leading_char(ch: str) -> bool:
+    if not ch:
+        return False
+    return ch.isalpha() or ch in VIETNAMESE_BOUNDARY_CHARS or ch in _ASCII_BOUNDARY_CHARS
+
+
 def _fix_vietnamese_spacing(text: str) -> str:
     if not text:
         return text
@@ -191,25 +199,33 @@ def _fix_vietnamese_spacing(text: str) -> str:
     chars: List[str] = []
     length = len(text)
     for idx, ch in enumerate(text):
-        if (
-            idx > 0
-            and not text[idx - 1].isspace()
-            and text[idx - 1] in VIETNAMESE_BOUNDARY_CHARS
-        ):
-            lowered = text[idx:].lower()
-            matched = None
-            for onset in _SORTED_ONSETS:
-                if lowered.startswith(onset):
-                    next_idx = idx + len(onset)
-                    if next_idx < length:
-                        next_char = text[next_idx].lower()
-                        if next_char not in VIETNAMESE_VOWELS:
-                            continue
-                    matched = onset
-                    break
+        if idx > 0 and not text[idx - 1].isspace():
+            prev_char = text[idx - 1]
+            if prev_char not in _LEFT_BOUNDARY_BLOCKERS and _is_word_leading_char(prev_char):
+                lowered = text[idx:].lower()
+                matched = None
+                for onset in _SORTED_ONSETS:
+                    if lowered.startswith(onset):
+                        next_idx = idx + len(onset)
+                        if next_idx < length:
+                            next_char = text[next_idx].lower()
+                            if next_char not in VIETNAMESE_VOWELS:
+                                continue
+                        matched = onset
+                        break
 
-            if matched and (not chars or chars[-1] != " "):
-                chars.append(" ")
+                should_insert = False
+                if matched:
+                    should_insert = True
+                else:
+                    curr_lower = ch.lower()
+                    if curr_lower in VIETNAMESE_VOWELS:
+                        should_insert = True
+                    elif ch.isupper() and not prev_char.isupper():
+                        should_insert = True
+
+                if should_insert and (not chars or chars[-1] != " "):
+                    chars.append(" ")
 
         chars.append(ch)
 
@@ -340,12 +356,6 @@ def _build_front_matter_chunks(raw_sections: List[FrontLine], default_title: str
         if chunk:
             chunks.append(chunk)
 
-    description_lines = _extract_section_by_keywords(candidates, DESCRIPTION_PATTERNS, used_orders, max_follow=40)
-    if description_lines:
-        chunk = _compose_front_chunk("# Mô tả tài liệu", description_lines)
-        if chunk:
-            chunks.append(chunk)
-
     preface_lines = _extract_section_by_keywords(candidates, PREFACE_PATTERNS, used_orders, max_follow=60)
     if preface_lines:
         chunk = _compose_front_chunk("# Lời nói đầu", preface_lines)
@@ -353,31 +363,6 @@ def _build_front_matter_chunks(raw_sections: List[FrontLine], default_title: str
             chunks.append(chunk)
 
     return chunks
-
-
-def _build_table_of_contents_chunk(lines: List[LineEntry], max_items: int = 200) -> Optional[str]:
-    entries: List[str] = []
-    for line in lines:
-        if line.level is None:
-            continue
-        title = line.text.strip()
-        if not title:
-            continue
-
-        heading_level = max(1, min(line.level, 6))
-        indent = "  " * (heading_level - 1)
-        bullet = f"{indent}- {title}"
-        if line.tags:
-            bullet = f"{bullet}{line.tags}"
-        entries.append(bullet)
-        if len(entries) >= max_items:
-            break
-
-    if not entries:
-        return None
-
-    body = "\n".join(entries)
-    return f"# Mục lục\n{body}".strip()
 
 
 def _determine_heading_threshold(levels: Iterable[int], bull: int, depth: int = 2) -> Optional[int]:
@@ -693,10 +678,9 @@ def chunk(
         callback(0.99, "No chunk parsed out.")
 
     front_chunks = _build_front_matter_chunks(front_lines, title)
-    toc_chunk = _build_table_of_contents_chunk(lines)
     body_chunks = _build_markdown_chunks(lines, heading_threshold, title, chunk_token_num)
 
-    combined = front_chunks + ([toc_chunk] if toc_chunk else []) + body_chunks
+    combined = front_chunks + body_chunks
     chunks = [ck for ck in combined if ck and ck.strip()]
 
     if not chunks:
