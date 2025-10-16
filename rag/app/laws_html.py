@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections import Counter
 from dataclasses import dataclass
 from statistics import median
 from typing import Iterable, List, Optional
@@ -50,6 +51,8 @@ class HtmlAwareSection:
 class PdfDeepDocHTML(laws.Pdf):
     """DeepDoc variant that preserves layout hints for downstream HTML heuristics."""
 
+    _logger = logging.getLogger(__name__)
+
     _LAYOUT_LEVEL_HINTS = (
         ("title", 1),
         ("chapter", 2),
@@ -75,6 +78,13 @@ class PdfDeepDocHTML(laws.Pdf):
         zoomin: int = 3,
         callback=None,
     ) -> tuple[List[HtmlAwareSection], Optional[dict]]:
+        self._logger.info(
+            "[LawsHTML] Dispatching to DeepDoc base parser for %s (pages %s-%s, zoom=%s)",
+            filename,
+            from_page,
+            to_page,
+            zoomin,
+        )
         raw_sections, metadata = super().__call__(
             filename,
             binary=binary,
@@ -82,6 +92,9 @@ class PdfDeepDocHTML(laws.Pdf):
             to_page=to_page,
             zoomin=zoomin,
             callback=callback,
+        )
+        self._logger.debug(
+            "[LawsHTML] DeepDoc returned %d raw sections", len(raw_sections)
         )
         boxes = list(getattr(self, "boxes", []))
         body_indents = [
@@ -112,6 +125,28 @@ class PdfDeepDocHTML(laws.Pdf):
                     layout_type=layout_type,
                     level=level,
                 )
+            )
+
+        heading_counts = Counter(
+            str(section.level) for section in sections if section.level is not None
+        )
+        layout_counts = Counter(section.layout_type or "body" for section in sections)
+        self._logger.info(
+            "[LawsHTML] Produced %d sections", len(sections)
+        )
+        if heading_counts:
+            self._logger.info(
+                "[LawsHTML] Heading distribution: %s", dict(heading_counts)
+            )
+        else:
+            self._logger.info("[LawsHTML] No heading levels detected")
+        if layout_counts:
+            self._logger.debug(
+                "[LawsHTML] Layout distribution: %s", dict(layout_counts)
+            )
+        if metadata:
+            self._logger.debug(
+                "[LawsHTML] Metadata keys: %s", sorted(metadata.keys())
             )
 
         return sections, metadata

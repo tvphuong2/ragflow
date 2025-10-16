@@ -79,6 +79,18 @@ def run_html_smoke_test(
     logging.info("Initialising DeepDoc HTML parser (CPU mode)…")
     parser = PdfDeepDocHTML()
 
+    def _progress_callback(*args, **kwargs) -> None:
+        progress = None
+        message = kwargs.get("msg")
+        if args:
+            progress = args[0]
+            if len(args) > 1 and message is None:
+                message = args[1]
+        if message:
+            logging.info("[DeepDoc] %s", message)
+        if isinstance(progress, (int, float)):
+            logging.debug("[DeepDoc] progress %.2f", float(progress))
+
     for pdf_path in _iter_pdf_paths(pdf_paths):
         logging.info("Processing %s", pdf_path)
         started = time.time()
@@ -87,15 +99,27 @@ def run_html_smoke_test(
             from_page=0,
             to_page=100000,
             zoomin=zoom,
+            callback=_progress_callback,
         )
         elapsed = time.time() - started
         logging.info(
             "Parsed %s in %.2fs -> %d sections", pdf_path.name, elapsed, len(sections)
         )
+        heading_distribution = _count_heading_levels(sections)
+        if heading_distribution:
+            logging.info(
+                "[LawsHTML] Heading distribution for %s: %s",
+                pdf_path.name,
+                heading_distribution,
+            )
+        else:
+            logging.info(
+                "[LawsHTML] No heading levels detected for %s", pdf_path.name
+            )
         summary = {
             "file": pdf_path.name,
             "sections": len(sections),
-            "heading_levels": _count_heading_levels(sections),
+            "heading_levels": heading_distribution,
             "elapsed_seconds": round(elapsed, 3),
             "preview": _summarise_sections(sections, limit),
         }
