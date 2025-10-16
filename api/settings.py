@@ -136,7 +136,8 @@ def init_settings():
     global API_KEY, PARSERS, HOST_IP, HOST_PORT, SECRET_KEY
     API_KEY = LLM.get("api_key")
     PARSERS = LLM.get(
-        "parsers", "naive:General,qa:Q&A,resume:Resume,manual:Manual,table:Table,paper:Paper,book:Book,laws:Laws,policy:Policy,presentation:Presentation,picture:Picture,one:One,audio:Audio,email:Email,tag:Tag"
+        "parsers",
+        "naive:General,qa:Q&A,resume:Resume,manual:Manual,table:Table,paper:Paper,book:Book,laws:Laws,laws_html:Laws HTML,policy:Policy,presentation:Presentation,picture:Picture,one:One,audio:Audio,email:Email,tag:Tag",
     )
 
     chat_entry = _parse_model_entry(LLM_DEFAULT_MODELS.get("chat_model", CHAT_MDL))
