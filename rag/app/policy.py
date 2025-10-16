@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from io import BytesIO
@@ -24,8 +25,10 @@ from typing import Iterable, List, Optional
 from docx import Document
 from tika import parser
 
-from api.db import ParserType
+from api.db import LLMType, ParserType
+from api.db.services.llm_service import LLMBundle
 from deepdoc.parser import DocxParser, HtmlParser, PdfParser, PlainParser
+from deepdoc.parser.pdf_parser import VisionParser
 from deepdoc.parser.utils import get_text
 from rag.app import laws
 from rag.nlp import (
@@ -63,111 +66,6 @@ FRAGMENTED_SEQUENCE_PATTERN = re.compile(
 )
 NUMERIC_HEADING_PATTERN = re.compile(r"^\s*(\d+(?:\.\d+)*)(?:\s+|[.)\-–—]\s*)")
 
-VIETNAMESE_ONSETS = [
-    "ngh",
-    "ch",
-    "gh",
-    "gi",
-    "kh",
-    "ng",
-    "nh",
-    "ph",
-    "qu",
-    "th",
-    "tr",
-    "b",
-    "c",
-    "d",
-    "đ",
-    "g",
-    "h",
-    "k",
-    "l",
-    "m",
-    "n",
-    "p",
-    "q",
-    "r",
-    "s",
-    "t",
-    "v",
-    "x",
-]
-_SORTED_ONSETS = sorted(VIETNAMESE_ONSETS, key=len, reverse=True)
-VIETNAMESE_VOWELS = {
-    "a",
-    "ă",
-    "â",
-    "á",
-    "à",
-    "ả",
-    "ã",
-    "ạ",
-    "ắ",
-    "ằ",
-    "ẳ",
-    "ẵ",
-    "ặ",
-    "ấ",
-    "ầ",
-    "ẩ",
-    "ẫ",
-    "ậ",
-    "e",
-    "ê",
-    "é",
-    "è",
-    "ẻ",
-    "ẽ",
-    "ẹ",
-    "ế",
-    "ề",
-    "ể",
-    "ễ",
-    "ệ",
-    "i",
-    "í",
-    "ì",
-    "ỉ",
-    "ĩ",
-    "ị",
-    "o",
-    "ô",
-    "ơ",
-    "ó",
-    "ò",
-    "ỏ",
-    "õ",
-    "ọ",
-    "ố",
-    "ồ",
-    "ổ",
-    "ỗ",
-    "ộ",
-    "ớ",
-    "ờ",
-    "ở",
-    "ỡ",
-    "ợ",
-    "u",
-    "ư",
-    "ú",
-    "ù",
-    "ủ",
-    "ũ",
-    "ụ",
-    "ứ",
-    "ừ",
-    "ử",
-    "ữ",
-    "ự",
-    "y",
-    "ý",
-    "ỳ",
-    "ỷ",
-    "ỹ",
-    "ỵ",
-}
 VIETNAMESE_BOUNDARY_CHARS = set(
     "àáạảãăằắặẳẵâầấậẩẫèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ"
     "ÀÁẠẢÃĂẰẮẶẲẴÂẦẤẬẨẪÈÉẸẺẼÊỀẾỆỂỄÌÍỊỈĨÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠÙÚỤỦŨƯỪỨỰỬỮỲÝỴỶỸĐ"
@@ -189,13 +87,21 @@ DESCRIPTION_PATTERNS = [
 SECTION_PATTERNS = TOC_PATTERNS + PREFACE_PATTERNS + DESCRIPTION_PATTERNS
 
 
-_VIETNAMESE_SPACE_TRIGGERS = VIETNAMESE_BOUNDARY_CHARS | {"đ", "Đ"}
+_VIETNAMESE_DIACRITIC_CHARS = VIETNAMESE_BOUNDARY_CHARS | {"đ", "Đ"}
 
 
-def _is_word_leading_char(ch: str) -> bool:
-    if not ch:
-        return False
-    return ch in _VIETNAMESE_SPACE_TRIGGERS
+def _contains_vietnamese_diacritic(segment: str, window: int = 4) -> bool:
+    """Return True when the segment contains a Vietnamese diacritic within the window."""
+
+    limit = min(len(segment), max(0, window))
+    for idx in range(limit):
+        if segment[idx] in _VIETNAMESE_DIACRITIC_CHARS:
+            return True
+    return False
+
+
+def _is_wordish_char(ch: str) -> bool:
+    return bool(ch and re.match(r"[A-Za-zÀ-ỹĐđ0-9]", ch))
 
 
 def _merge_fragmented_latin_sequences(text: str) -> str:
@@ -234,34 +140,16 @@ def _fix_vietnamese_spacing(text: str) -> str:
         return text
 
     chars: List[str] = []
-    length = len(text)
     for idx, ch in enumerate(text):
         if idx > 0 and not text[idx - 1].isspace():
             prev_char = text[idx - 1]
-            if prev_char not in _LEFT_BOUNDARY_BLOCKERS and _is_word_leading_char(prev_char):
-                lowered = text[idx:].lower()
-                matched = None
-                for onset in _SORTED_ONSETS:
-                    if lowered.startswith(onset):
-                        next_idx = idx + len(onset)
-                        if next_idx < length:
-                            next_char = text[next_idx].lower()
-                            if next_char not in VIETNAMESE_VOWELS:
-                                continue
-                        matched = onset
-                        break
-
-                should_insert = False
-                if matched:
-                    should_insert = True
-                else:
-                    curr_lower = ch.lower()
-                    if curr_lower in VIETNAMESE_VOWELS:
-                        should_insert = True
-                    elif ch.isupper() and not prev_char.isupper():
-                        should_insert = True
-
-                if should_insert and (not chars or chars[-1] != " "):
+            if (
+                prev_char not in _LEFT_BOUNDARY_BLOCKERS
+                and _is_wordish_char(prev_char)
+                and _is_wordish_char(ch)
+                and _contains_vietnamese_diacritic(text[idx : idx + 5])
+            ):
+                if not chars or chars[-1] != " ":
                     chars.append(" ")
 
         chars.append(ch)
@@ -545,6 +433,33 @@ class PdfDeepDocVN(Pdf):
         return normalized_sections, metadata
 
 
+class PdfVisionPolicy(VisionParser):
+    def __call__(
+        self,
+        filename,
+        binary=None,
+        from_page: int = 0,
+        to_page: int = 100000,
+        zoomin: int = 3,
+        callback=None,
+        **kwargs,
+    ):
+        source = filename if binary is None else binary
+        sections, metadata = super().__call__(
+            source,
+            from_page=from_page,
+            to_page=to_page,
+            zoomin=zoomin,
+            callback=callback,
+            **kwargs,
+        )
+        normalized_sections = [
+            (_merge_fragmented_latin_sequences(text), tags)
+            for text, tags in sections
+        ]
+        return normalized_sections, metadata
+
+
 class PolicyDocx(DocxParser):
     def __init__(self):
         super().__init__()
@@ -703,13 +618,44 @@ def chunk(
         callback(0.7, "Finish parsing.")
 
     elif re.search(r"\.pdf$", filename, re.IGNORECASE):
-        layout_choice = parser_config.get("layout_recognize", "DeepDocVN")
-        if layout_choice == "Plain Text":
-            pdf_parser = PlainParser()
-        elif layout_choice == "DeepDocVN":
-            pdf_parser = PdfDeepDocVN()
+        layout_choice_raw = parser_config.get("layout_recognize", "DeepDocVN")
+        if isinstance(layout_choice_raw, bool):
+            layout_choice = "DeepDocVN" if layout_choice_raw else "Plain Text"
         else:
+            layout_choice = str(layout_choice_raw or "DeepDocVN")
+
+        layout_choice_lower = layout_choice.lower()
+        if layout_choice_lower == "plain text":
+            pdf_parser = PlainParser()
+        elif layout_choice_lower == "deepdocvn":
+            pdf_parser = PdfDeepDocVN()
+        elif layout_choice_lower in {"deepdoc", "deepdoc2", "deepdoc-standard"}:
             pdf_parser = Pdf()
+        else:
+            tenant_id = kwargs.get("tenant_id")
+            if not tenant_id:
+                logging.warning(
+                    "Missing tenant_id for layout recognizer '%s'; falling back to DeepDoc parser.",
+                    layout_choice,
+                )
+                pdf_parser = Pdf()
+            else:
+                try:
+                    vision_model = LLMBundle(
+                        tenant_id,
+                        LLMType.IMAGE2TEXT,
+                        llm_name=layout_choice,
+                        lang=lang,
+                    )
+                except Exception as exc:  # pragma: no cover - defensive fallback
+                    logging.warning(
+                        "Failed to initialize vision layout recognizer '%s': %s. Using DeepDoc parser instead.",
+                        layout_choice,
+                        exc,
+                    )
+                    pdf_parser = Pdf()
+                else:
+                    pdf_parser = PdfVisionPolicy(vision_model=vision_model)
         callback(0.1, "Start to parse.")
         sections_raw = []
         result = pdf_parser(
@@ -779,4 +725,4 @@ def chunk(
     return tokenize_chunks(chunks, doc, eng, pdf_parser)
 
 
-__all__ = ["chunk", "Pdf", "PdfDeepDocVN"]
+__all__ = ["chunk", "Pdf", "PdfDeepDocVN", "PdfVisionPolicy"]
