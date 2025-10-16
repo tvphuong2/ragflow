@@ -59,6 +59,116 @@ class FrontLine:
 TAG_PATTERN = re.compile(r"@@[0-9-]+\t[0-9.\t]+##")
 PAGE_PATTERN = re.compile(r"@@([0-9-]+)\t")
 
+VIETNAMESE_ONSETS = [
+    "ngh",
+    "ch",
+    "gh",
+    "gi",
+    "kh",
+    "ng",
+    "nh",
+    "ph",
+    "qu",
+    "th",
+    "tr",
+    "b",
+    "c",
+    "d",
+    "đ",
+    "g",
+    "h",
+    "k",
+    "l",
+    "m",
+    "n",
+    "p",
+    "q",
+    "r",
+    "s",
+    "t",
+    "v",
+    "x",
+]
+_SORTED_ONSETS = sorted(VIETNAMESE_ONSETS, key=len, reverse=True)
+VIETNAMESE_VOWELS = {
+    "a",
+    "ă",
+    "â",
+    "á",
+    "à",
+    "ả",
+    "ã",
+    "ạ",
+    "ắ",
+    "ằ",
+    "ẳ",
+    "ẵ",
+    "ặ",
+    "ấ",
+    "ầ",
+    "ẩ",
+    "ẫ",
+    "ậ",
+    "e",
+    "ê",
+    "é",
+    "è",
+    "ẻ",
+    "ẽ",
+    "ẹ",
+    "ế",
+    "ề",
+    "ể",
+    "ễ",
+    "ệ",
+    "i",
+    "í",
+    "ì",
+    "ỉ",
+    "ĩ",
+    "ị",
+    "o",
+    "ô",
+    "ơ",
+    "ó",
+    "ò",
+    "ỏ",
+    "õ",
+    "ọ",
+    "ố",
+    "ồ",
+    "ổ",
+    "ỗ",
+    "ộ",
+    "ớ",
+    "ờ",
+    "ở",
+    "ỡ",
+    "ợ",
+    "u",
+    "ư",
+    "ú",
+    "ù",
+    "ủ",
+    "ũ",
+    "ụ",
+    "ứ",
+    "ừ",
+    "ử",
+    "ữ",
+    "ự",
+    "y",
+    "ý",
+    "ỳ",
+    "ỷ",
+    "ỹ",
+    "ỵ",
+}
+VIETNAMESE_BOUNDARY_CHARS = set(
+    "àáạảãăằắặẳẵâầấậẩẫèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ"
+    "ÀÁẠẢÃĂẰẮẶẲẴÂẦẤẬẨẪÈÉẸẺẼÊỀẾỆỂỄÌÍỊỈĨÒÓỌỎÕÔỒỐỘỔỖƠỜỚỢỞỠÙÚỤỦŨƯỪỨỰỬỮỲÝỴỶỸĐ"
+)
+
 TOC_PATTERNS = [r"\bMục lục\b", r"\bTable of Contents\b", r"\bContents\b"]
 PREFACE_PATTERNS = [r"\bLời nói đầu\b", r"\bLời mở đầu\b", r"\bPreface\b"]
 DESCRIPTION_PATTERNS = [
@@ -74,9 +184,42 @@ DESCRIPTION_PATTERNS = [
 SECTION_PATTERNS = TOC_PATTERNS + PREFACE_PATTERNS + DESCRIPTION_PATTERNS
 
 
+def _fix_vietnamese_spacing(text: str) -> str:
+    if not text:
+        return text
+
+    chars: List[str] = []
+    length = len(text)
+    for idx, ch in enumerate(text):
+        if (
+            idx > 0
+            and not text[idx - 1].isspace()
+            and text[idx - 1] in VIETNAMESE_BOUNDARY_CHARS
+        ):
+            lowered = text[idx:].lower()
+            matched = None
+            for onset in _SORTED_ONSETS:
+                if lowered.startswith(onset):
+                    next_idx = idx + len(onset)
+                    if next_idx < length:
+                        next_char = text[next_idx].lower()
+                        if next_char not in VIETNAMESE_VOWELS:
+                            continue
+                    matched = onset
+                    break
+
+            if matched and (not chars or chars[-1] != " "):
+                chars.append(" ")
+
+        chars.append(ch)
+
+    return "".join(chars)
+
+
 def _split_text_and_tags(text: str) -> tuple[str, str]:
     tags = "".join(TAG_PATTERN.findall(text))
     clean = TAG_PATTERN.sub("", text)
+    clean = _fix_vietnamese_spacing(clean)
     return clean.strip(), tags
 
 
@@ -209,13 +352,32 @@ def _build_front_matter_chunks(raw_sections: List[FrontLine], default_title: str
         if chunk:
             chunks.append(chunk)
 
-    toc_lines = _extract_section_by_keywords(candidates, TOC_PATTERNS, used_orders, max_follow=80)
-    if toc_lines:
-        chunk = _compose_front_chunk("# Mục lục", toc_lines)
-        if chunk:
-            chunks.append(chunk)
-
     return chunks
+
+
+def _build_table_of_contents_chunk(lines: List[LineEntry], max_items: int = 200) -> Optional[str]:
+    entries: List[str] = []
+    for line in lines:
+        if line.level is None:
+            continue
+        title = line.text.strip()
+        if not title:
+            continue
+
+        heading_level = max(1, min(line.level, 6))
+        indent = "  " * (heading_level - 1)
+        bullet = f"{indent}- {title}"
+        if line.tags:
+            bullet = f"{bullet}{line.tags}"
+        entries.append(bullet)
+        if len(entries) >= max_items:
+            break
+
+    if not entries:
+        return None
+
+    body = "\n".join(entries)
+    return f"# Mục lục\n{body}".strip()
 
 
 def _determine_heading_threshold(levels: Iterable[int], bull: int, depth: int = 2) -> Optional[int]:
@@ -531,9 +693,11 @@ def chunk(
         callback(0.99, "No chunk parsed out.")
 
     front_chunks = _build_front_matter_chunks(front_lines, title)
+    toc_chunk = _build_table_of_contents_chunk(lines)
     body_chunks = _build_markdown_chunks(lines, heading_threshold, title, chunk_token_num)
 
-    chunks = [ck for ck in front_chunks + body_chunks if ck.strip()]
+    combined = front_chunks + ([toc_chunk] if toc_chunk else []) + body_chunks
+    chunks = [ck for ck in combined if ck and ck.strip()]
 
     if not chunks:
         callback(0.99, "No chunk parsed out.")
