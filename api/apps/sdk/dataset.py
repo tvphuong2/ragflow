@@ -96,7 +96,7 @@ def create(tenant_id):
               description: Dataset permission.
             chunk_method:
               type: string
-              enum: ["naive", "book", "email", "laws", "policy", "manual", "one", "paper",
+              enum: ["naive", "book", "email", "laws", "laws_html", "policy", "manual", "one", "paper",
                      "picture", "presentation", "qa", "table", "tag"
                      ]
               description: Chunking method.
@@ -297,7 +297,7 @@ def update(tenant_id, dataset_id):
               description: Updated dataset permission.
             chunk_method:
               type: string
-              enum: ["naive", "book", "email", "laws", "policy", "manual", "one", "paper",
+              enum: ["naive", "book", "email", "laws", "laws_html", "policy", "manual", "one", "paper",
                      "picture", "presentation", "qa", "table", "tag"
                      ]
               description: Updated chunking method.

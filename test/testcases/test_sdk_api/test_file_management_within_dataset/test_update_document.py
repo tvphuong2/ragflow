@@ -77,6 +77,7 @@ class TestDocumentsUpdated:
             ("paper", ""),
             ("book", ""),
             ("laws", ""),
+            ("laws_html", ""),
             ("presentation", ""),
             ("picture", ""),
             ("one", ""),

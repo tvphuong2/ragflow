@@ -153,6 +153,7 @@ class TestDocumentsUpdated:
             ("paper", 0, ""),
             ("book", 0, ""),
             ("laws", 0, ""),
+            ("laws_html", 0, ""),
             ("presentation", 0, ""),
             ("picture", 0, ""),
             ("one", 0, ""),

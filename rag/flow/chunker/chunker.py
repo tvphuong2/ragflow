@@ -152,6 +152,7 @@ class Chunker(ProcessBase):
             "paper": self._paper,
             "book": self._book,
             "laws": self._laws,
+            "laws_html": self._laws,
             "presentation": self._presentation,
             "one": self._one,
         }

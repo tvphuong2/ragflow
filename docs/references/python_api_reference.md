@@ -152,6 +152,7 @@ The chunking method of the dataset to create. Available options:
 - `"paper"`: Paper
 - `"book"`: Book
 - `"laws"`: Laws
+- `"laws_html"`: Laws (HTML aware)
 - `"policy"`: Policy
 - `"presentation"`: Presentation
 - `"picture"`: Picture
@@ -174,7 +175,7 @@ The parser configuration of the dataset. A `ParserConfig` object's attributes va
   `{"raptor": {"use_raptor": False}}`
 - `chunk_method`=`"book"`:
   `{"raptor": {"use_raptor": False}}`
-- `chunk_method`=`"laws"`:
+- `chunk_method`=`"laws"` or `"laws_html"`:
   `{"raptor": {"use_raptor": False}}`
 - `chunk_method`=`"policy"`:
   `{"raptor": {"use_raptor": False}}`
@@ -342,7 +343,8 @@ A dictionary representing the attributes to update, with the following keys:
   - `"naive"`: General (default)
   - `"book"`: Book
   - `"email"`: Email
-  - `"laws"`: Laws
+- `"laws"`: Laws
+- `"laws_html"`: Laws (HTML aware)
   - `"policy"`: Policy
   - `"manual"`: Manual
   - `"one"`: One
@@ -429,7 +431,8 @@ A dictionary representing the attributes to update, with the following keys:
   - `"table"`: Table
   - `"paper"`: Paper
   - `"book"`: Book
-  - `"laws"`: Laws
+- `"laws"`: Laws
+- `"laws_html"`: Laws (HTML aware)
   - `"policy"`: Policy
   - `"presentation"`: Presentation
   - `"picture"`: Picture
@@ -448,7 +451,7 @@ A dictionary representing the attributes to update, with the following keys:
     `{"raptor": {"use_raptor": False}}`
   - `chunk_method`=`"book"`:
     `{"raptor": {"use_raptor": False}}`
-  - `chunk_method`=`"laws"`:
+- `chunk_method`=`"laws"` or `"laws_html"`:
     `{"raptor": {"use_raptor": False}}`
   - `chunk_method`=`"policy"`:
     `{"raptor": {"use_raptor": False}}`
@@ -605,7 +608,7 @@ A `Document` object contains the following attributes:
     `{"raptor": {"use_raptor": False}}`
   - `chunk_method`=`"book"`:
     `{"raptor": {"use_raptor": False}}`
-  - `chunk_method`=`"laws"`:
+- `chunk_method`=`"laws"` or `"laws_html"`:
     `{"raptor": {"use_raptor": False}}`
   - `chunk_method`=`"policy"`:
     `{"raptor": {"use_raptor": False}}`

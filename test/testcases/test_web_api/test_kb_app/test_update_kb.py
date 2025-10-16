@@ -186,6 +186,7 @@ class TestDatasetUpdate:
             "book",
             "email",
             "laws",
+            "laws_html",
             "manual",
             "one",
             "paper",
@@ -195,7 +196,7 @@ class TestDatasetUpdate:
             "table",
             pytest.param("tag", marks=pytest.mark.skipif(os.getenv("DOC_ENGINE") == "infinity", reason="Infinity does not support parser_id=tag")),
         ],
-        ids=["naive", "book", "email", "laws", "manual", "one", "paper", "picture", "presentation", "qa", "table", "tag"],
+        ids=["naive", "book", "email", "laws", "laws_html", "manual", "one", "paper", "picture", "presentation", "qa", "table", "tag"],
     )
     def test_chunk_method(self, WebApiAuth, add_dataset_func, chunk_method):
         kb_id = add_dataset_func

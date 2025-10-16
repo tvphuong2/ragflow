@@ -14,6 +14,7 @@ import { BookConfiguration } from './book';
 import { EmailConfiguration } from './email';
 import { KnowledgeGraphConfiguration } from './knowledge-graph';
 import { LawsConfiguration } from './laws';
+import { LawsHtmlConfiguration } from './laws-html';
 import { ManualConfiguration } from './manual';
 import { NaiveConfiguration } from './naive';
 import { OneConfiguration } from './one';
@@ -37,6 +38,7 @@ const ConfigurationComponentMap = {
   [DocumentParserType.Paper]: PaperConfiguration,
   [DocumentParserType.Book]: BookConfiguration,
   [DocumentParserType.Laws]: LawsConfiguration,
+  [DocumentParserType.LawsHtml]: LawsHtmlConfiguration,
   [DocumentParserType.Policy]: PolicyConfiguration,
   [DocumentParserType.Presentation]: PresentationConfiguration,
   [DocumentParserType.Picture]: PictureConfiguration,

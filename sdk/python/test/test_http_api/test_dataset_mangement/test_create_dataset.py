@@ -344,6 +344,7 @@ class TestDatasetCreate:
             ("book", "book"),
             ("email", "email"),
             ("laws", "laws"),
+            ("laws_html", "laws_html"),
             ("policy", "policy"),
             ("manual", "manual"),
             ("one", "one"),
@@ -354,7 +355,7 @@ class TestDatasetCreate:
             ("table", "table"),
             ("tag", "tag"),
         ],
-        ids=["naive", "book", "email", "laws", "policy", "manual", "one", "paper", "picture", "presentation", "qa", "table", "tag"],
+        ids=["naive", "book", "email", "laws", "laws_html", "policy", "manual", "one", "paper", "picture", "presentation", "qa", "table", "tag"],
     )
     def test_chunk_method(self, get_http_api_auth, name, chunk_method):
         payload = {"name": name, "chunk_method": chunk_method}
@@ -376,7 +377,7 @@ class TestDatasetCreate:
         payload = {"name": name, "chunk_method": chunk_method}
         res = create_dataset(get_http_api_auth, payload)
         assert res["code"] == 101, res
-        assert "Input should be 'naive', 'book', 'email', 'laws', 'policy', 'manual', 'one', 'paper', 'picture', 'presentation', 'qa', 'table' or 'tag'" in res["message"], res
+        assert "Input should be 'naive', 'book', 'email', 'laws', 'laws_html', 'policy', 'manual', 'one', 'paper', 'picture', 'presentation', 'qa', 'table' or 'tag'" in res["message"], res
 
     @pytest.mark.p2
     def test_chunk_method_unset(self, get_http_api_auth):
@@ -390,7 +391,7 @@ class TestDatasetCreate:
         payload = {"name": "chunk_method_none", "chunk_method": None}
         res = create_dataset(get_http_api_auth, payload)
         assert res["code"] == 101, res
-        assert "Input should be 'naive', 'book', 'email', 'laws', 'manual', 'one', 'paper', 'picture', 'presentation', 'qa', 'table' or 'tag'" in res["message"], res
+        assert "Input should be 'naive', 'book', 'email', 'laws', 'laws_html', 'manual', 'one', 'paper', 'picture', 'presentation', 'qa', 'table' or 'tag'" in res["message"], res
 
     @pytest.mark.p2
     @pytest.mark.parametrize(

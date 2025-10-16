@@ -95,6 +95,7 @@ export default {
     },
     knowledgeDetails: {
       deepDocVn: 'DeepDoc（越南语）',
+      deepDocHtml: 'DeepDoc（HTML）',
       generate: '生成',
       raptor: 'Raptor',
       knowledgeGraph: '知识图谱',

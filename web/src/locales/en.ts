@@ -105,6 +105,7 @@ export default {
       generateKnowledgeGraph:
         'This will extract entities and relationships from all your documents in this dataset. The process may take a while to complete.',
       deepDocVn: 'DeepDoc (Vietnamese)',
+      deepDocHtml: 'DeepDoc (HTML)',
       generateRaptor:
         'This will extract entities and relationships from all your documents in this dataset. The process may take a while to complete.',
       generate: 'Generate',

@@ -86,6 +86,7 @@ export default {
     },
     knowledgeDetails: {
       deepDocVn: 'DeepDoc (Tiếng Việt)',
+      deepDocHtml: 'DeepDoc (HTML)',
       dataset: 'Dữ liệu',
       testing: 'Kiểm tra truy hồi',
       files: 'Các tệp',

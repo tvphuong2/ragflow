@@ -57,7 +57,7 @@ from api.db.services.file2document_service import File2DocumentService
 from api import settings
 from api.versions import get_ragflow_version
 from api.db.db_models import close_connection
-from rag.app import laws, paper, presentation, manual, qa, table, book, resume, picture, naive, one, audio, \
+from rag.app import laws, laws_html, paper, presentation, manual, qa, table, book, resume, picture, naive, one, audio, \
     email, tag, policy
 from rag.nlp import search, rag_tokenizer
 from rag.raptor import RecursiveAbstractiveProcessing4TreeOrganizedRetrieval as Raptor
@@ -77,6 +77,7 @@ FACTORY = {
     ParserType.PRESENTATION.value: presentation,
     ParserType.MANUAL.value: manual,
     ParserType.LAWS.value: laws,
+    ParserType.LAWS_HTML.value: laws_html,
     ParserType.POLICY.value: policy,
     ParserType.QA.value: qa,
     ParserType.TABLE.value: table,

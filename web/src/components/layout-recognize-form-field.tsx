@@ -16,6 +16,7 @@ import { RAGFlowSelect } from './ui/select';
 export const enum DocumentType {
   DeepDOC = 'DeepDOC',
   DeepDocVN = 'DeepDocVN',
+  DeepDocHTML = 'DeepDocHTML',
   PlainText = 'Plain Text',
 }
 
@@ -30,6 +31,10 @@ export function LayoutRecognizeFormField() {
       {
         label: t('deepDocVn'),
         value: DocumentType.DeepDocVN,
+      },
+      {
+        label: t('deepDocHtml'),
+        value: DocumentType.DeepDocHTML,
       },
       {
         label: 'DeepDoc',

@@ -85,6 +85,7 @@ export default {
     },
     knowledgeDetails: {
       deepDocVn: 'DeepDoc（越南語）',
+      deepDocHtml: 'DeepDoc（HTML）',
       dataset: '數據集',
       testing: '檢索測試',
       configuration: '配置',

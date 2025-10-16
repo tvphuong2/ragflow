@@ -39,7 +39,21 @@ def test_create_dataset_with_duplicated_name(get_api_key_fixture):
 def test_create_dataset_with_random_chunk_method(get_api_key_fixture):
     API_KEY = get_api_key_fixture
     rag = RAGFlow(API_KEY, HOST_ADDRESS)
-    valid_chunk_methods = ["naive", "manual", "qa", "table", "paper", "book", "laws", "policy", "presentation", "picture", "one", "email"]
+    valid_chunk_methods = [
+        "naive",
+        "manual",
+        "qa",
+        "table",
+        "paper",
+        "book",
+        "laws",
+        "laws_html",
+        "policy",
+        "presentation",
+        "picture",
+        "one",
+        "email",
+    ]
     random_chunk_method = random.choice(valid_chunk_methods)
     rag.create_dataset("test_create_dataset_with_random_chunk_method", chunk_method=random_chunk_method)
 

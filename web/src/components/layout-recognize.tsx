@@ -8,6 +8,7 @@ import { useMemo } from 'react';
 const enum DocumentType {
   DeepDOC = 'DeepDOC',
   DeepDocVN = 'DeepDocVN',
+  DeepDocHTML = 'DeepDocHTML',
   PlainText = 'Plain Text',
 }
 
@@ -20,6 +21,10 @@ const LayoutRecognize = () => {
       {
         label: t('deepDocVn'),
         value: DocumentType.DeepDocVN,
+      },
+      {
+        label: t('deepDocHtml'),
+        value: DocumentType.DeepDocHTML,
       },
       {
         label: 'DeepDoc',

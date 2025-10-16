@@ -73,6 +73,7 @@ export enum DocumentParserType {
   Paper = 'paper',
   Book = 'book',
   Laws = 'laws',
+  LawsHtml = 'laws_html',
   Policy = 'policy',
   Presentation = 'presentation',
   Picture = 'picture',

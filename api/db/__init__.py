@@ -86,6 +86,7 @@ VALID_TASK_STATUS     = {TaskStatus.UNSTART, TaskStatus.RUNNING, TaskStatus.CANC
 class ParserType(StrEnum):
     PRESENTATION = "presentation"
     LAWS = "laws"
+    LAWS_HTML = "laws_html"
     MANUAL = "manual"
     PAPER = "paper"
     RESUME = "resume"
