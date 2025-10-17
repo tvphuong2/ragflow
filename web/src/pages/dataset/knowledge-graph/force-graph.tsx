@@ -59,27 +59,31 @@ const ForceGraph = ({ data, show }: IProps) => {
       ? {
           type: 'combo-combined' as const,
           preventOverlap: true,
-          comboPadding: 24,
-          spacing: 160,
-          nodeSpacing: 80,
+          comboPadding: 32,
+          spacing: 280,
+          nodeSpacing: 140,
         }
       : {
           type: 'force' as const,
           preventOverlap: true,
-          nodeSpacing: 80,
-          linkDistance: 260,
-          nodeStrength: -240,
-          edgeStrength: 0.2,
-          damping: 0.9,
-          gravity: 50,
-          minMovement: 0.1,
-          maxIteration: 800,
+          width: 4000,
+          height: 4000,
+          nodeSpacing: 140,
+          linkDistance: 360,
+          nodeStrength: -520,
+          edgeStrength: 0.18,
+          damping: 0.88,
+          gravity: 18,
+          minMovement: 0.05,
+          maxIteration: 1200,
         };
 
     const graph = new Graph({
       container: containerRef.current!,
       autoFit: 'view',
       autoResize: true,
+      minZoom: 0.02,
+      maxZoom: 8,
       behaviors,
       plugins: [
         {
@@ -147,7 +151,11 @@ const ForceGraph = ({ data, show }: IProps) => {
     graph.setData({ nodes, edges, combos });
 
     graph.render();
-    graph.fitView(16);
+    graph.fitCenter();
+    graph.zoomTo(0.35, {
+      x: graph.getWidth() / 2,
+      y: graph.getHeight() / 2,
+    });
   }, [nextData]);
 
   useEffect(() => {
