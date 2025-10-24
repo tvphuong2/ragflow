@@ -41,6 +41,46 @@ from rag.prompts.generator import vision_llm_describe_prompt
 from rag.settings import PARALLEL_DEVICES
 import unicodedata as ud
 
+_VI_DIAC_LOWER = "ăắằẳẵặâấầẩẫậêếềểễệôốồổỗộơớờởỡợưứừửữựđàảãáạèẻẽéẹìỉĩíịòỏõóọùủũúụỳỷỹýỵ"
+VIETNAMESE_DIACRITICS = set(_VI_DIAC_LOWER + _VI_DIAC_LOWER.upper())
+VIETNAMESE_KEYWORDS_ASCII = {
+    "chuong",
+    "phan",
+    "muc",
+    "dieu",
+    "loi",
+    "phu",
+    "luc",
+    "tai",
+    "lieu",
+    "tham",
+    "khao",
+    "ket",
+    "luan",
+    "chinh",
+    "sach",
+    "cong",
+    "ty",
+    "doanh",
+    "nghiep",
+    "an",
+    "ninh",
+    "chien",
+    "luoc",
+    "quoc",
+    "gia",
+    "uy",
+    "ban",
+    "nghi",
+    "dinh",
+    "quyet",
+    "dinh",
+    "trach",
+    "nhiem",
+    "huong",
+    "dan",
+}
+
 LOCK_KEY_pdfplumber = "global_shared_lock_pdfplumber"
 if LOCK_KEY_pdfplumber not in sys.modules:
     sys.modules[LOCK_KEY_pdfplumber] = threading.Lock()
@@ -100,6 +140,7 @@ class RAGFlowPdfParser:
 
         self.page_from = 0
         self.column_num = 1
+        self._force_vi_full_ocr = False
 
     def __char_width(self, c):
         return (c["x1"] - c["x0"]) // max(len(c["text"]), 1)
@@ -199,6 +240,82 @@ class RAGFlowPdfParser:
         if not strong_signal:
             return False
         return self._vi_register_and_check_consistency(level, sig)
+
+    def _token_has_vn_diacritic(self, token: str) -> bool:
+        if not token:
+            return False
+        if any(ch in VIETNAMESE_DIACRITICS for ch in token):
+            return True
+        decomposed = ud.normalize("NFD", token)
+        if any(ch in VIETNAMESE_DIACRITICS for ch in decomposed):
+            return True
+        return any(ud.combining(ch) for ch in decomposed)
+
+    def _should_force_vietnamese_ocr(self) -> bool:
+        if not getattr(self, "page_chars", None):
+            return False
+
+        samples = []
+        for page_chars in self.page_chars:
+            if not page_chars:
+                continue
+            for ch in page_chars:
+                text = ch.get("text")
+                if not text:
+                    continue
+                samples.append(text)
+                if len(samples) >= 4000:
+                    break
+            if len(samples) >= 4000:
+                break
+
+        if not samples:
+            return False
+
+        sample_text = ud.normalize("NFC", "".join(samples))
+        tokens = re.findall(r"[A-Za-zÀ-Ỵà-ỵĐđ]+", sample_text)
+        if len(tokens) < 40:
+            return False
+
+        diacritic_tokens = sum(1 for tok in tokens if self._token_has_vn_diacritic(tok))
+        single_tokens = sum(1 for tok in tokens if len(tok) == 1)
+        accentless_hits = sum(1 for tok in tokens if tok.lower() in VIETNAMESE_KEYWORDS_ASCII)
+
+        diacritic_ratio = diacritic_tokens / max(len(tokens), 1)
+        single_ratio = single_tokens / max(len(tokens), 1)
+        space_ratio = sample_text.count(" ") / max(len(sample_text), 1)
+
+        accentless_signal = accentless_hits >= 3 or re.search(r"\b(chuong|phan|muc|dieu|nghi\s*dinh|quyet\s*dinh)\b", sample_text, re.I)
+        broken_caps_signal = bool(re.search(r"[A-Z](?:\s[A-Z]){4,}", sample_text))
+
+        if not accentless_signal and not broken_caps_signal:
+            logging.debug(
+                "Vietnamese OCR check skipped: insufficient signals (tokens=%d, accentless_hits=%d, broken_caps=%s)",
+                len(tokens),
+                accentless_hits,
+                broken_caps_signal,
+            )
+            return False
+
+        should_force = False
+        if diacritic_ratio < 0.05 and (space_ratio < 0.1 or single_ratio > 0.4 or broken_caps_signal):
+            should_force = True
+        elif single_ratio > 0.65:
+            should_force = True
+        elif accentless_signal and space_ratio < 0.06:
+            should_force = True
+
+        logging.debug(
+            "Vietnamese OCR check: tokens=%d, diac_ratio=%.3f, single_ratio=%.3f, space_ratio=%.3f, accentless_hits=%d, broken_caps=%s, force=%s",
+            len(tokens),
+            diacritic_ratio,
+            single_ratio,
+            space_ratio,
+            accentless_hits,
+            broken_caps_signal,
+            should_force,
+        )
+        return should_force
 
     def _updown_concat_features(self, up, down):
         w = max(self.__char_width(up), self.__char_width(down))
@@ -1020,6 +1137,10 @@ class RAGFlowPdfParser:
             logging.exception("RAGFlowPdfParser __images__")
         logging.info(f"__images__ dedupe_chars cost {timer() - start}s")
 
+        self._force_vi_full_ocr = self._should_force_vietnamese_ocr()
+        if self._force_vi_full_ocr:
+            logging.info("Detected unreliable Vietnamese text extraction; forcing OCR for all text boxes.")
+
         self.outlines = []
         try:
             with pdf2_read(fnm if isinstance(fnm, str) else BytesIO(fnm)) as pdf:
@@ -1051,6 +1172,8 @@ class RAGFlowPdfParser:
             self.is_english = True
         else:
             self.is_english = False
+        if self._force_vi_full_ocr:
+            self.is_english = False
 
         async def __img_ocr(i, id, img, chars, limiter):
             j = 0
@@ -1075,7 +1198,10 @@ class RAGFlowPdfParser:
 
         async def __img_ocr_launcher():
             def __ocr_preprocess():
-                chars = self.page_chars[i] if not self.is_english else []
+                if self._force_vi_full_ocr:
+                    chars = []
+                else:
+                    chars = self.page_chars[i] if not self.is_english else []
                 self.mean_height.append(np.median(sorted([c["height"] for c in chars])) if chars else 0)
                 self.mean_width.append(np.median(sorted([c["width"] for c in chars])) if chars else 8)
                 self.page_cum_height.append(img.size[1] / zoomin)
