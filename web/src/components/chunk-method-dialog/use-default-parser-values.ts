@@ -9,7 +9,7 @@ export function useDefaultParserValues() {
   const defaultParserValues = useMemo(() => {
     const defaultParserValues = {
       task_page_size: 12,
-      layout_recognize: DocumentType.DeepDOC,
+      layout_recognize: DocumentType.DeepDocVN,
       chunk_token_num: 512,
       delimiter: '\n',
       auto_keywords: 0,

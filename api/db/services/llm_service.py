@@ -16,11 +16,13 @@
 import inspect
 import logging
 import re
+from copy import deepcopy
 from functools import partial
 from typing import Generator
 from api.db.db_models import LLM
 from api.db.services.common_service import CommonService
 from api.db.services.tenant_llm_service import LLM4Tenant, TenantLLMService
+from rag.utils.llm_logger import export_llm_interaction_log
 
 
 class LLMService(CommonService):
@@ -227,16 +229,34 @@ class LLMBundle(LLM4Tenant):
         if self.langfuse:
             generation = self.langfuse.start_generation(trace_context=self.trace_context, name="chat", model=self.llm_name, input={"system": system, "history": history})
 
+        log_history = deepcopy(history)
+        log_request = {"gen_conf": deepcopy(gen_conf)}
+
         chat_partial = partial(self.mdl.chat, system, history, gen_conf)
         if self.is_tools and self.mdl.is_tools:
             chat_partial = partial(self.mdl.chat_with_tools, system, history, gen_conf)
-            
+
         use_kwargs = self._clean_param(chat_partial, **kwargs)
+        log_request["kwargs"] = deepcopy(use_kwargs)
         txt, used_tokens = chat_partial(**use_kwargs)
         txt = self._remove_reasoning_content(txt)
 
         if not self.verbose_tool_use:
             txt = re.sub(r"<tool_call>.*?</tool_call>", "", txt, flags=re.DOTALL)
+
+        export_llm_interaction_log(
+            tenant_id=self.tenant_id,
+            llm_name=self.llm_name,
+            model_name=getattr(self.mdl, "model_name", None),
+            provider=getattr(self.mdl, "_FACTORY_NAME", self.mdl.__class__.__name__),
+            mode="chat",
+            system_prompt=system,
+            history=log_history,
+            request=log_request,
+            output=txt,
+            usage={"total_tokens": used_tokens},
+            extra={"tools_enabled": bool(self.is_tools and self.mdl.is_tools)},
+        )
 
         if isinstance(txt, int) and not TenantLLMService.increase_usage(self.tenant_id, self.llm_type, used_tokens, self.llm_name):
             logging.error("LLMBundle.chat can't update token usage for {}/CHAT llm_name: {}, used_tokens: {}".format(self.tenant_id, self.llm_name, used_tokens))
@@ -252,11 +272,14 @@ class LLMBundle(LLM4Tenant):
             generation = self.langfuse.start_generation(trace_context=self.trace_context, name="chat_streamly", model=self.llm_name, input={"system": system, "history": history})
 
         ans = ""
+        log_history = deepcopy(history)
+        log_request = {"gen_conf": deepcopy(gen_conf)}
         chat_partial = partial(self.mdl.chat_streamly, system, history, gen_conf)
         total_tokens = 0
         if self.is_tools and self.mdl.is_tools:
             chat_partial = partial(self.mdl.chat_streamly_with_tools, system, history, gen_conf)
         use_kwargs = self._clean_param(chat_partial, **kwargs)
+        log_request["kwargs"] = deepcopy(use_kwargs)
         for txt in chat_partial(**use_kwargs):
             if isinstance(txt, int):
                 total_tokens = txt
@@ -273,6 +296,20 @@ class LLMBundle(LLM4Tenant):
 
             ans += txt
             yield ans
+
+        export_llm_interaction_log(
+            tenant_id=self.tenant_id,
+            llm_name=self.llm_name,
+            model_name=getattr(self.mdl, "model_name", None),
+            provider=getattr(self.mdl, "_FACTORY_NAME", self.mdl.__class__.__name__),
+            mode="chat_streamly",
+            system_prompt=system,
+            history=log_history,
+            request=log_request,
+            output=ans,
+            usage={"total_tokens": total_tokens} if total_tokens else None,
+            extra={"tools_enabled": bool(self.is_tools and self.mdl.is_tools)},
+        )
 
         if total_tokens > 0:
             if not TenantLLMService.increase_usage(self.tenant_id, self.llm_type, txt, self.llm_name):

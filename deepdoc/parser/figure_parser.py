@@ -13,6 +13,7 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 #
+import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from PIL import Image
@@ -91,12 +92,21 @@ class VisionFigureParser:
             )
             return figure_idx, description_text
 
-        futures = []
+        future_to_idx = {}
         for idx, img_binary in enumerate(self.figures or []):
-            futures.append(shared_executor.submit(process, idx, img_binary))
+            future = shared_executor.submit(process, idx, img_binary)
+            future_to_idx[future] = idx
 
-        for future in as_completed(futures):
-            figure_num, txt = future.result()
+        for future in as_completed(future_to_idx):
+            figure_num = future_to_idx[future]
+            try:
+                _, txt = future.result()
+            except Exception as exc:  # pragma: no cover - defensive guard against PIL decoding errors
+                logging.warning(
+                    "Vision enhancement failed for figure %s: %s", figure_num, exc, exc_info=True
+                )
+                callback(0.6, f"Visual model error on figure {figure_num + 1}: {exc}. Using original caption.")
+                continue
             if txt:
                 self.descriptions[figure_num] = txt + "\n".join(self.descriptions[figure_num])
 

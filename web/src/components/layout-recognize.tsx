@@ -7,6 +7,8 @@ import { useMemo } from 'react';
 
 const enum DocumentType {
   DeepDOC = 'DeepDOC',
+  DeepDocVN = 'DeepDocVN',
+  DeepDocHTML = 'DeepDocHTML',
   PlainText = 'Plain Text',
 }
 
@@ -15,10 +17,24 @@ const LayoutRecognize = () => {
   const allOptions = useSelectLlmOptionsByModelType();
 
   const options = useMemo(() => {
-    const list = [DocumentType.DeepDOC, DocumentType.PlainText].map((x) => ({
-      label: x === DocumentType.PlainText ? t(camelCase(x)) : 'DeepDoc',
-      value: x,
-    }));
+    const list = [
+      {
+        label: t('deepDocVn'),
+        value: DocumentType.DeepDocVN,
+      },
+      {
+        label: t('deepDocHtml'),
+        value: DocumentType.DeepDocHTML,
+      },
+      {
+        label: 'DeepDoc',
+        value: DocumentType.DeepDOC,
+      },
+      {
+        label: t(camelCase(DocumentType.PlainText)),
+        value: DocumentType.PlainText,
+      },
+    ];
 
     const image2TextList = allOptions[LlmModelType.Image2text].map((x) => {
       return {
@@ -44,7 +60,7 @@ const LayoutRecognize = () => {
     <Form.Item
       name={['parser_config', 'layout_recognize']}
       label={t('layoutRecognize')}
-      initialValue={DocumentType.DeepDOC}
+      initialValue={DocumentType.DeepDocVN}
       tooltip={t('layoutRecognizeTip')}
     >
       <Select options={options} popupMatchSelectWidth={false} />

@@ -34,10 +34,22 @@ export const enum KnowledgeApiAction {
   RemoveKnowledgeGraph = 'removeKnowledgeGraph',
 }
 
+const safeJSONParse = (value: string) => {
+  try {
+    return JSON.parse(value);
+  } catch (error) {
+    console.error('[KnowledgeGraph] Failed to parse JSON field', error);
+    return {};
+  }
+};
+
 export const useKnowledgeBaseId = (): string => {
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
 
-  return (id as string) || '';
+  const fallbackId = searchParams.get('id');
+
+  return (id as string) || fallbackId || '';
 };
 
 export const useTestRetrieval = () => {
@@ -275,7 +287,22 @@ export function useFetchKnowledgeGraph() {
     gcTime: 0,
     queryFn: async () => {
       const { data } = await getKnowledgeGraph(knowledgeBaseId);
-      return data?.data;
+      const response = data?.data;
+
+      if (!response) {
+        return { graph: {}, mind_map: {} } as IKnowledgeGraph;
+      }
+
+      const graph =
+        typeof response.graph === 'string'
+          ? safeJSONParse(response.graph)
+          : response.graph ?? {};
+      const mindMap =
+        typeof response.mind_map === 'string'
+          ? safeJSONParse(response.mind_map)
+          : response.mind_map ?? {};
+
+      return { graph, mind_map: mindMap } as IKnowledgeGraph;
     },
   });
 
@@ -314,7 +341,7 @@ export const useRemoveKnowledgeGraph = () => {
       if (data.code === 0) {
         message.success(i18n.t(`message.deleted`));
         queryClient.invalidateQueries({
-          queryKey: ['fetchKnowledgeGraph'],
+          queryKey: [KnowledgeApiAction.FetchKnowledgeGraph, knowledgeBaseId],
         });
       }
       return data?.code;

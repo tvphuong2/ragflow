@@ -465,6 +465,8 @@ curl --request POST \
   - `"book"`: Book
   - `"email"`: Email
   - `"laws"`: Laws
+  - `"laws_html"`: Laws (HTML aware)
+  - `"policy"`: Policy
   - `"manual"`: Manual
   - `"one"`: One
   - `"paper"`: Paper
@@ -494,7 +496,8 @@ curl --request POST \
     - `"html4excel"`: `bool` Indicates whether to convert Excel documents into HTML format.
       - Defaults to `false`
     - `"layout_recognize"`: `string`
-      - Defaults to `DeepDOC`
+      - Defaults to `DeepDocVN`
+      - Accepts `DeepDocVN`, `DeepDOC`, or `Plain Text`
     - `"tag_kb_ids"`: `array<string>` refer to [Use tag set](https://ragflow.io/docs/dev/use_tag_sets)
       - Must include a list of dataset IDs, where each dataset is parsed using the ​​Tag Chunking Method
     - `"task_page_size"`: `int` For PDF only.
@@ -504,7 +507,7 @@ curl --request POST \
       - Defaults to: `{"use_raptor": false}`
     - `"graphrag"`: `object` GRAPHRAG-specific settings.
       - Defaults to: `{"use_graphrag": false}`
-  - If `"chunk_method"` is `"qa"`, `"manuel"`, `"paper"`, `"book"`, `"laws"`, or `"presentation"`, the `"parser_config"` object contains the following attribute:  
+- If `"chunk_method"` is `"qa"`, `"manuel"`, `"paper"`, `"book"`, `"laws"`, `"laws_html"`, or `"presentation"`, the `"parser_config"` object contains the following attribute:
     - `"raptor"`: `object` RAPTOR-specific settings.
       - Defaults to: `{"use_raptor": false}`.
   - If `"chunk_method"` is `"table"`, `"picture"`, `"one"`, or `"email"`, `"parser_config"` is an empty JSON object.
@@ -687,6 +690,8 @@ curl --request PUT \
   - `"book"`: Book
   - `"email"`: Email
   - `"laws"`: Laws
+  - `"laws_html"`: Laws (HTML aware)
+  - `"policy"`: Policy
   - `"manual"`: Manual
   - `"one"`: One
   - `"paper"`: Paper
@@ -715,7 +720,7 @@ curl --request PUT \
     - `"html4excel"`: `bool` Indicates whether to convert Excel documents into HTML format.
       - Defaults to `false`
     - `"layout_recognize"`: `string`
-      - Defaults to `DeepDOC`
+      - Defaults to `DeepDocVN`
     - `"tag_kb_ids"`: `array<string>` refer to [Use tag set](https://ragflow.io/docs/dev/use_tag_sets)
       - Must include a list of dataset IDs, where each dataset is parsed using the ​​Tag Chunking Method
     - `"task_page_size"`: `int` For PDF only.
@@ -725,7 +730,7 @@ curl --request PUT \
       - Defaults to: `{"use_raptor": false}`
     - `"graphrag"`: `object` GRAPHRAG-specific settings.
       - Defaults to: `{"use_graphrag": false}`
-  - If `"chunk_method"` is `"qa"`, `"manuel"`, `"paper"`, `"book"`, `"laws"`, or `"presentation"`, the `"parser_config"` object contains the following attribute:  
+- If `"chunk_method"` is `"qa"`, `"manuel"`, `"paper"`, `"book"`, `"laws"`, `"laws_html"`, `"policy"`, or `"presentation"`, the `"parser_config"` object contains the following attribute:
     - `"raptor"`: `object` RAPTOR-specific settings.
       - Defaults to: `{"use_raptor": false}`.
   - If `"chunk_method"` is `"table"`, `"picture"`, `"one"`, or `"email"`, `"parser_config"` is an empty JSON object.
@@ -1107,6 +1112,7 @@ curl --request PUT \
   - `"paper"`: Paper
   - `"book"`: Book
   - `"laws"`: Laws
+  - `"laws_html"`: Laws (HTML aware)
   - `"presentation"`: Presentation
   - `"picture"`: Picture
   - `"one"`: One
@@ -1120,7 +1126,7 @@ curl --request PUT \
     - `"delimiter"`: Defaults to `"\n"`.
     - `"task_page_size"`: Defaults to `12`. For PDF only.
     - `"raptor"`: RAPTOR-specific settings. Defaults to: `{"use_raptor": false}`.
-  - If `"chunk_method"` is `"qa"`, `"manuel"`, `"paper"`, `"book"`, `"laws"`, or `"presentation"`, the `"parser_config"` object contains the following attribute:
+- If `"chunk_method"` is `"qa"`, `"manuel"`, `"paper"`, `"book"`, `"laws"`, `"laws_html"`, `"policy"`, or `"presentation"`, the `"parser_config"` object contains the following attribute:
     - `"raptor"`: RAPTOR-specific settings. Defaults to: `{"use_raptor": false}`.
   - If `"chunk_method"` is `"table"`, `"picture"`, `"one"`, or `"email"`, `"parser_config"` is an empty JSON object.
 

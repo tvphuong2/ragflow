@@ -104,6 +104,8 @@ export default {
     knowledgeDetails: {
       generateKnowledgeGraph:
         'This will extract entities and relationships from all your documents in this dataset. The process may take a while to complete.',
+      deepDocVn: 'DeepDoc (Vietnamese)',
+      deepDocHtml: 'DeepDoc (HTML)',
       generateRaptor:
         'This will extract entities and relationships from all your documents in this dataset. The process may take a while to complete.',
       generate: 'Generate',
@@ -316,6 +318,9 @@ export default {
       </p><p>
       The chunk has a granularity consistent with 'ARTICLE', ensuring all upper level text is included in the chunk.
       </p>`,
+      policy: `<p>Supported file formats are <b>DOCX</b>, <b>PDF</b>, <b>TXT</b>.</p><p>
+      Policy handbooks are segmented by their heading hierarchy so each chunk includes the complete markdown outline for the applicable section.</p><p>
+      The parser also extracts front-matter such as the title, description, preface, and table of contents when they appear in the opening pages, giving agents the right context during retrieval.</p>`,
       manual: `<p>Only <b>PDF</b> is supported.</p><p>
       We assume that the manual has a hierarchical section structure, using the lowest section titles as basic unit for chunking documents. Therefore, figures and tables in the same section will not be separated, which may result in larger chunk sizes.
       </p>`,

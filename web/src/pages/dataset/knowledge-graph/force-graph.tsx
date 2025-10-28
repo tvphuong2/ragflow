@@ -11,6 +11,15 @@ const TooltipColorMap = {
   edge: 'blue',
 };
 
+function safeJSONParse(value: string) {
+  try {
+    return JSON.parse(value);
+  } catch (error) {
+    console.error('[ForceGraph] Failed to parse graph payload', error);
+    return {};
+  }
+}
+
 interface IProps {
   data: any;
   show: boolean;
@@ -21,29 +30,61 @@ const ForceGraph = ({ data, show }: IProps) => {
   const graphRef = useRef<Graph | null>(null);
 
   const nextData = useMemo(() => {
-    if (!isEmpty(data)) {
-      const graphData = data;
-      const mi = buildNodesAndCombos(graphData.nodes);
-      return { edges: graphData.edges, ...mi };
+    if (isEmpty(data)) {
+      return { nodes: [], edges: [], combos: [], hasCombos: false };
     }
-    return { nodes: [], edges: [] };
+
+    const parsed = typeof data === 'string' ? safeJSONParse(data) : data;
+    const nodes = Array.isArray(parsed?.nodes) ? parsed.nodes : [];
+    const edges = Array.isArray(parsed?.edges) ? parsed.edges : [];
+    const { nodes: nextNodes, combos, hasCombos } = buildNodesAndCombos(nodes);
+
+    return { edges, nodes: nextNodes, combos, hasCombos };
   }, [data]);
 
   const render = useCallback(() => {
+    const { nodes, edges, combos, hasCombos } = nextData;
+    const behaviors = [
+      'drag-element',
+      'drag-canvas',
+      'zoom-canvas',
+      ...(hasCombos ? ['collapse-expand'] : []),
+      {
+        type: 'hover-activate',
+        degree: 1, // 👈🏻 Activate relations.
+      },
+    ];
+
+    const layout = hasCombos
+      ? {
+          type: 'combo-combined' as const,
+          preventOverlap: true,
+          comboPadding: 32,
+          spacing: 280,
+          nodeSpacing: 140,
+        }
+      : {
+          type: 'force' as const,
+          preventOverlap: true,
+          width: 4000,
+          height: 4000,
+          nodeSpacing: 140,
+          linkDistance: 360,
+          nodeStrength: -520,
+          edgeStrength: 0.18,
+          damping: 0.88,
+          gravity: 18,
+          minMovement: 0.05,
+          maxIteration: 1200,
+        };
+
     const graph = new Graph({
       container: containerRef.current!,
       autoFit: 'view',
       autoResize: true,
-      behaviors: [
-        'drag-element',
-        'drag-canvas',
-        'zoom-canvas',
-        'collapse-expand',
-        {
-          type: 'hover-activate',
-          degree: 1, // 👈🏻 Activate relations.
-        },
-      ],
+      minZoom: 0.02,
+      maxZoom: 8,
+      behaviors,
       plugins: [
         {
           type: 'tooltip',
@@ -72,20 +113,13 @@ const ForceGraph = ({ data, show }: IProps) => {
           },
         },
       ],
-      layout: {
-        type: 'combo-combined',
-        preventOverlap: true,
-        comboPadding: 1,
-        spacing: 100,
-      },
+      layout,
       node: {
         style: {
-          size: 150,
+          size: 96,
           labelText: (d) => d.id,
-          // labelPadding: 30,
-          labelFontSize: 40,
-          //   labelOffsetX: 20,
-          labelOffsetY: 20,
+          labelFontSize: 22,
+          labelOffsetY: 12,
           labelPlacement: 'center',
           labelWordWrap: true,
         },
@@ -114,16 +148,34 @@ const ForceGraph = ({ data, show }: IProps) => {
 
     graphRef.current = graph;
 
-    graph.setData(nextData);
+    graph.setData({ nodes, edges, combos });
 
     graph.render();
+    graph.fitCenter();
+    graph.zoomTo(0.35, {
+      x: graph.getWidth() / 2,
+      y: graph.getHeight() / 2,
+    });
   }, [nextData]);
 
   useEffect(() => {
-    if (!isEmpty(data)) {
-      render();
+    if (!containerRef.current) {
+      return;
     }
-  }, [data, render]);
+
+    if (isEmpty(nextData.nodes) && isEmpty(nextData.edges)) {
+      graphRef.current?.destroy();
+      graphRef.current = null;
+      return;
+    }
+
+    render();
+
+    return () => {
+      graphRef.current?.destroy();
+      graphRef.current = null;
+    };
+  }, [nextData, render]);
 
   return (
     <div

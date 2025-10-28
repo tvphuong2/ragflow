@@ -287,6 +287,8 @@ class TestDatasetUpdate:
             "book",
             "email",
             "laws",
+            "laws_html",
+            "policy",
             "manual",
             "one",
             "paper",
@@ -296,7 +298,7 @@ class TestDatasetUpdate:
             "table",
             "tag",
         ],
-        ids=["naive", "book", "email", "laws", "manual", "one", "paper", "picture", "presentation", "qa", "table", "tag"],
+        ids=["naive", "book", "email", "laws", "laws_html", "policy", "manual", "one", "paper", "picture", "presentation", "qa", "table", "tag"],
     )
     def test_chunk_method(self, client, add_dataset_func, chunk_method):
         dataset = add_dataset_func
@@ -320,14 +322,14 @@ class TestDatasetUpdate:
         dataset = add_dataset_func
         with pytest.raises(Exception) as excinfo:
             dataset.update({"chunk_method": chunk_method})
-        assert "Input should be 'naive', 'book', 'email', 'laws', 'manual', 'one', 'paper', 'picture', 'presentation', 'qa', 'table' or 'tag'" in str(excinfo.value), str(excinfo.value)
+        assert "Input should be 'naive', 'book', 'email', 'laws', 'laws_html', 'policy', 'manual', 'one', 'paper', 'picture', 'presentation', 'qa', 'table' or 'tag'" in str(excinfo.value), str(excinfo.value)
 
     @pytest.mark.p3
     def test_chunk_method_none(self, add_dataset_func):
         dataset = add_dataset_func
         with pytest.raises(Exception) as excinfo:
             dataset.update({"chunk_method": None})
-        assert "Input should be 'naive', 'book', 'email', 'laws', 'manual', 'one', 'paper', 'picture', 'presentation', 'qa', 'table' or 'tag'" in str(excinfo.value), str(excinfo.value)
+        assert "Input should be 'naive', 'book', 'email', 'laws', 'laws_html', 'policy', 'manual', 'one', 'paper', 'picture', 'presentation', 'qa', 'table' or 'tag'" in str(excinfo.value), str(excinfo.value)
 
     @pytest.mark.skipif(os.getenv("DOC_ENGINE") == "infinity", reason="#8208")
     @pytest.mark.p2
@@ -404,6 +406,7 @@ class TestDatasetUpdate:
             {"html4excel": True},
             {"html4excel": False},
             {"layout_recognize": "DeepDOC"},
+            {"layout_recognize": "DeepDocVN"},
             {"layout_recognize": "Plain Text"},
             {"tag_kb_ids": ["1", "2"]},
             {"topn_tags": 1},
@@ -454,6 +457,7 @@ class TestDatasetUpdate:
             "html4excel_true",
             "html4excel_false",
             "layout_recognize_DeepDOC",
+            "layout_recognize_DeepDocVN",
             "layout_recognize_navie",
             "tag_kb_ids",
             "topn_tags_min",

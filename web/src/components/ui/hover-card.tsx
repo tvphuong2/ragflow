@@ -5,9 +5,17 @@ import * as React from 'react';
 
 import { cn } from '@/lib/utils';
 
-const HoverCard = HoverCardPrimitive.Root;
+const HoverCard = React.forwardRef<
+  React.ElementRef<typeof HoverCardPrimitive.Root>,
+  React.ComponentPropsWithoutRef<typeof HoverCardPrimitive.Root>
+>(({ ...props }, ref) => <HoverCardPrimitive.Root ref={ref} {...props} />);
+HoverCard.displayName = HoverCardPrimitive.Root.displayName;
 
-const HoverCardTrigger = HoverCardPrimitive.Trigger;
+const HoverCardTrigger = React.forwardRef<
+  React.ElementRef<typeof HoverCardPrimitive.Trigger>,
+  React.ComponentPropsWithoutRef<typeof HoverCardPrimitive.Trigger>
+>(({ ...props }, ref) => <HoverCardPrimitive.Trigger ref={ref} {...props} />);
+HoverCardTrigger.displayName = HoverCardPrimitive.Trigger.displayName;
 
 const HoverCardContent = React.forwardRef<
   React.ElementRef<typeof HoverCardPrimitive.Content>,

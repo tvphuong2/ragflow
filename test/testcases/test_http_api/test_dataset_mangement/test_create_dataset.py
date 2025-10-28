@@ -349,6 +349,8 @@ class TestDatasetCreate:
             ("book", "book"),
             ("email", "email"),
             ("laws", "laws"),
+            ("laws_html", "laws_html"),
+            ("policy", "policy"),
             ("manual", "manual"),
             ("one", "one"),
             ("paper", "paper"),
@@ -358,7 +360,7 @@ class TestDatasetCreate:
             ("table", "table"),
             ("tag", "tag"),
         ],
-        ids=["naive", "book", "email", "laws", "manual", "one", "paper", "picture", "presentation", "qa", "table", "tag"],
+        ids=["naive", "book", "email", "laws", "laws_html", "policy", "manual", "one", "paper", "picture", "presentation", "qa", "table", "tag"],
     )
     def test_chunk_method(self, HttpApiAuth, name, chunk_method):
         payload = {"name": name, "chunk_method": chunk_method}
@@ -380,7 +382,7 @@ class TestDatasetCreate:
         payload = {"name": name, "chunk_method": chunk_method}
         res = create_dataset(HttpApiAuth, payload)
         assert res["code"] == 101, res
-        assert "Input should be 'naive', 'book', 'email', 'laws', 'manual', 'one', 'paper', 'picture', 'presentation', 'qa', 'table' or 'tag'" in res["message"], res
+        assert "Input should be 'naive', 'book', 'email', 'laws', 'laws_html', 'policy', 'manual', 'one', 'paper', 'picture', 'presentation', 'qa', 'table' or 'tag'" in res["message"], res
 
     @pytest.mark.p2
     def test_chunk_method_unset(self, HttpApiAuth):
@@ -394,7 +396,7 @@ class TestDatasetCreate:
         payload = {"name": "chunk_method_none", "chunk_method": None}
         res = create_dataset(HttpApiAuth, payload)
         assert res["code"] == 101, res
-        assert "Input should be 'naive', 'book', 'email', 'laws', 'manual', 'one', 'paper', 'picture', 'presentation', 'qa', 'table' or 'tag'" in res["message"], res
+        assert "Input should be 'naive', 'book', 'email', 'laws', 'laws_html', 'policy', 'manual', 'one', 'paper', 'picture', 'presentation', 'qa', 'table' or 'tag'" in res["message"], res
 
     @pytest.mark.p1
     @pytest.mark.parametrize(
@@ -414,6 +416,7 @@ class TestDatasetCreate:
             ("html4excel_true", {"html4excel": True}),
             ("html4excel_false", {"html4excel": False}),
             ("layout_recognize_DeepDOC", {"layout_recognize": "DeepDOC"}),
+            ("layout_recognize_DeepDocVN", {"layout_recognize": "DeepDocVN"}),
             ("layout_recognize_navie", {"layout_recognize": "Plain Text"}),
             ("tag_kb_ids", {"tag_kb_ids": ["1", "2"]}),
             ("topn_tags_min", {"topn_tags": 1}),
@@ -464,6 +467,7 @@ class TestDatasetCreate:
             "html4excel_true",
             "html4excel_false",
             "layout_recognize_DeepDOC",
+            "layout_recognize_DeepDocVN",
             "layout_recognize_navie",
             "tag_kb_ids",
             "topn_tags_min",

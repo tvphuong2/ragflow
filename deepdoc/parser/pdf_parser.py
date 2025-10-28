@@ -39,14 +39,58 @@ from rag.app.picture import vision_llm_chunk as picture_vision_llm_chunk
 from rag.nlp import rag_tokenizer
 from rag.prompts.generator import vision_llm_describe_prompt
 from rag.settings import PARALLEL_DEVICES
+import unicodedata as ud
+
+_VI_DIAC_LOWER = "ăắằẳẵặâấầẩẫậêếềểễệôốồổỗộơớờởỡợưứừửữựđàảãáạèẻẽéẹìỉĩíịòỏõóọùủũúụỳỷỹýỵ"
+VIETNAMESE_DIACRITICS = set(_VI_DIAC_LOWER + _VI_DIAC_LOWER.upper())
+VIETNAMESE_KEYWORDS_ASCII = {
+    "chuong",
+    "phan",
+    "muc",
+    "dieu",
+    "loi",
+    "phu",
+    "luc",
+    "tai",
+    "lieu",
+    "tham",
+    "khao",
+    "ket",
+    "luan",
+    "chinh",
+    "sach",
+    "cong",
+    "ty",
+    "doanh",
+    "nghiep",
+    "an",
+    "ninh",
+    "chien",
+    "luoc",
+    "quoc",
+    "gia",
+    "uy",
+    "ban",
+    "nghi",
+    "dinh",
+    "quyet",
+    "dinh",
+    "trach",
+    "nhiem",
+    "huong",
+    "dan",
+}
 
 LOCK_KEY_pdfplumber = "global_shared_lock_pdfplumber"
 if LOCK_KEY_pdfplumber not in sys.modules:
     sys.modules[LOCK_KEY_pdfplumber] = threading.Lock()
 
 
+from PIL import Image
+
+
 class RAGFlowPdfParser:
-    def __init__(self, **kwargs):
+    def __init__(self, vision_model=None, **kwargs):
         """
         If you have trouble downloading HuggingFace models, -_^ this might help!!
 
@@ -60,6 +104,7 @@ class RAGFlowPdfParser:
         """
 
         self.ocr = OCR()
+        self._vision_model = vision_model
         self.parallel_limiter = None
         if PARALLEL_DEVICES > 1:
             self.parallel_limiter = [trio.CapacityLimiter(1) for _ in range(PARALLEL_DEVICES)]
@@ -99,6 +144,7 @@ class RAGFlowPdfParser:
 
         self.page_from = 0
         self.column_num = 1
+        self._force_vi_full_ocr = False
 
     def __char_width(self, c):
         return (c["x1"] - c["x0"]) // max(len(c["text"]), 1)
@@ -125,6 +171,156 @@ class RAGFlowPdfParser:
         ]
         return any([re.match(p, b["text"]) for p in proj_patt])
 
+    # ---------- Vietnamese Title Detection ----------
+    def _vi_norm(self, s: str) -> str:
+        s = ud.normalize("NFC", (s or "")).strip()
+        s = re.sub(r"\s+", " ", s)
+        return s
+
+    def _vi_is_all_caps(self, s: str) -> bool:
+        t = re.sub(r"[^A-Za-zÀ-ỴĐà-ỵđ]", "", s)
+        return bool(t) and t == t.upper()
+
+    def _vi_signature(self, text: str, b, level: str) -> tuple:
+        """Sinh chữ ký định dạng để enforce consistency: (case, ends_colon, height_bucket, numbering_kind)"""
+        page_idx = max(0, b["page_number"] - 1)
+        mh = self.mean_height[page_idx] or 0.0
+        h_ratio = (self.__height(b) / mh) if mh > 0 else 1.0
+        hb = round(min(max(h_ratio, 0.5), 3.0), 1)
+        ends_colon = text.endswith(":") or text.endswith("：")
+        case = "ALL" if self._vi_is_all_caps(text) else "MIX"
+        numbering_kind = (
+            "none" if not re.search(r"^(Chương|Phần|Mục|Điều|\(?[0-9ivxlcdmIVXLCDM]+[\).]|[0-9]+(\.[0-9]+){0,3})\b", text, re.I)
+            else "roman" if re.search(r"\b[IVXLCDM]+\b", text)
+            else "decimal" if re.search(r"^[0-9]+(\.[0-9]+){0,3}\b", text)
+            else "paren" if re.search(r"^\(?([0-9]{1,2}|[ivxlcdm]{1,4}|[a-z])[\).]\b", text, re.I)
+            else "word"
+        )
+        return (case, ends_colon, hb, numbering_kind)
+
+    def _vi_register_and_check_consistency(self, level: str, sig: tuple) -> bool:
+        reg = self._vi_hdr_sigs[level]
+        cnt = self._vi_hdr_sig_counts[level]
+        if not reg:
+            reg.add(sig)
+            cnt[sig] = 1
+            return True
+        maj_sig = max(cnt.items(), key=lambda x: x[1])[0]
+        if sig == maj_sig or sig in reg:
+            cnt[sig] = cnt.get(sig, 0) + 1
+            reg.add(sig)
+            return True
+        return False
+
+    def _match_proj_vi(self, b) -> bool:
+        if not b or not b.get("text"):
+            return False
+        t = self._vi_norm(b["text"])
+        if len(t) < 2 or re.match(r"^[0-9 ()\.,%/+/-]+$", t):
+            return False
+        page_idx = max(0, b["page_number"] - 1)
+        mh = self.mean_height[page_idx] or 0.0
+        h_ratio = (self.__height(b) / mh) if mh > 0 else 1.0
+        is_big = h_ratio >= 1.15
+        patt_levels = [
+            (r"^(Chương|Phần)\s+([IVXLCDM]+|\d+)\b(?:\s*[:\-–—]\s*.+)?$", "chapter"),
+            (r"^(Mục|Điều)\s+(\d+|[IVXLCDM]+)(?:\.\d+){0,3}\b(?:\s*[:\-–—]\s*.+)?$", "section"),
+            (r"^(\d+(?:\.\d+){1,3})\.?\s+.+$", "section"),
+            (r"^\(?([0-9]{1,2}|[ivxlcdm]{1,4}|[a-z])[\).]\s+.+$", "subsection"),
+        ]
+        matched_level = None
+        for p, lvl in patt_levels:
+            if re.match(p, t, flags=re.I):
+                matched_level = lvl
+                break
+        allcaps_vi = self._vi_is_all_caps(t) and 3 <= len(t.split()) <= 16
+        ends_title = bool(re.search(r"[:?：？]$", t)) and len(t) <= 120
+        looks_like_title = bool(matched_level or allcaps_vi or ends_title or b.get("layout_type") == "title")
+        if not looks_like_title:
+            return False
+        level = matched_level or ("misc")
+        sig = self._vi_signature(t, b, level)
+        strong_signal = is_big or matched_level is not None or allcaps_vi
+        if not strong_signal:
+            return False
+        return self._vi_register_and_check_consistency(level, sig)
+
+    def _token_has_vn_diacritic(self, token: str) -> bool:
+        if not token:
+            return False
+        if any(ch in VIETNAMESE_DIACRITICS for ch in token):
+            return True
+        decomposed = ud.normalize("NFD", token)
+        if any(ch in VIETNAMESE_DIACRITICS for ch in decomposed):
+            return True
+        return any(ud.combining(ch) for ch in decomposed)
+
+    def _should_force_vietnamese_ocr(self) -> bool:
+        if not getattr(self, "page_chars", None):
+            return False
+
+        samples = []
+        for page_chars in self.page_chars:
+            if not page_chars:
+                continue
+            for ch in page_chars:
+                text = ch.get("text")
+                if not text:
+                    continue
+                samples.append(text)
+                if len(samples) >= 4000:
+                    break
+            if len(samples) >= 4000:
+                break
+
+        if not samples:
+            return False
+
+        sample_text = ud.normalize("NFC", "".join(samples))
+        tokens = re.findall(r"[A-Za-zÀ-Ỵà-ỵĐđ]+", sample_text)
+        if len(tokens) < 40:
+            return False
+
+        diacritic_tokens = sum(1 for tok in tokens if self._token_has_vn_diacritic(tok))
+        single_tokens = sum(1 for tok in tokens if len(tok) == 1)
+        accentless_hits = sum(1 for tok in tokens if tok.lower() in VIETNAMESE_KEYWORDS_ASCII)
+
+        diacritic_ratio = diacritic_tokens / max(len(tokens), 1)
+        single_ratio = single_tokens / max(len(tokens), 1)
+        space_ratio = sample_text.count(" ") / max(len(sample_text), 1)
+
+        accentless_signal = accentless_hits >= 3 or re.search(r"\b(chuong|phan|muc|dieu|nghi\s*dinh|quyet\s*dinh)\b", sample_text, re.I)
+        broken_caps_signal = bool(re.search(r"[A-Z](?:\s[A-Z]){4,}", sample_text))
+
+        if not accentless_signal and not broken_caps_signal:
+            logging.debug(
+                "Vietnamese OCR check skipped: insufficient signals (tokens=%d, accentless_hits=%d, broken_caps=%s)",
+                len(tokens),
+                accentless_hits,
+                broken_caps_signal,
+            )
+            return False
+
+        should_force = False
+        if diacritic_ratio < 0.05 and (space_ratio < 0.1 or single_ratio > 0.4 or broken_caps_signal):
+            should_force = True
+        elif single_ratio > 0.65:
+            should_force = True
+        elif accentless_signal and space_ratio < 0.06:
+            should_force = True
+
+        logging.debug(
+            "Vietnamese OCR check: tokens=%d, diac_ratio=%.3f, single_ratio=%.3f, space_ratio=%.3f, accentless_hits=%d, broken_caps=%s, force=%s",
+            len(tokens),
+            diacritic_ratio,
+            single_ratio,
+            space_ratio,
+            accentless_hits,
+            broken_caps_signal,
+            should_force,
+        )
+        return should_force
+
     def _updown_concat_features(self, up, down):
         w = max(self.__char_width(up), self.__char_width(down))
         h = max(self.__height(up), self.__height(down))
@@ -150,7 +346,7 @@ class RAGFlowPdfParser:
             True if re.search(r"[，,][^。.]+$", up["text"]) else False,
             True if re.search(r"[，,][^。.]+$", up["text"]) else False,
             True if re.search(r"[\(（][^\)）]+$", up["text"]) and re.search(r"[\)）]", down["text"]) else False,
-            self._match_proj(down),
+            (self._match_proj_vi(down) if getattr(self, "is_vietnamese", False) else self._match_proj(down)),
             True if re.match(r"[A-Z]", down["text"]) else False,
             True if re.match(r"[A-Z]", up["text"][-1]) else False,
             True if re.match(r"[a-z0-9]", up["text"][-1]) else False,
@@ -172,11 +368,9 @@ class RAGFlowPdfParser:
 
     @staticmethod
     def sort_X_by_page(arr, threshold):
-        # sort using y1 first and then x1
         arr = sorted(arr, key=lambda r: (r["page_number"], r["x0"], r["top"]))
         for i in range(len(arr) - 1):
             for j in range(i, -1, -1):
-                # restore the order using th
                 if abs(arr[j + 1]["x0"] - arr[j]["x0"]) < threshold and arr[j + 1]["top"] < arr[j]["top"] and arr[j + 1]["page_number"] == arr[j]["page_number"]:
                     tmp = arr[j]
                     arr[j] = arr[j + 1]
@@ -197,12 +391,12 @@ class RAGFlowPdfParser:
         MARGIN = 10
         self.tb_cpns = []
         assert len(self.page_layout) == len(self.page_images)
-        for p, tbls in enumerate(self.page_layout):  # for page
+        for p, tbls in enumerate(self.page_layout):
             tbls = [f for f in tbls if f["type"] == "table"]
             tbcnt.append(len(tbls))
             if not tbls:
                 continue
-            for tb in tbls:  # for table
+            for tb in tbls:
                 left, top, right, bott = tb["x0"] - MARGIN, tb["top"] - MARGIN, tb["x1"] + MARGIN, tb["bottom"] + MARGIN
                 left *= ZM
                 top *= ZM
@@ -216,11 +410,11 @@ class RAGFlowPdfParser:
             return
         recos = self.tbl_det(imgs)
         tbcnt = np.cumsum(tbcnt)
-        for i in range(len(tbcnt) - 1):  # for page
+        for i in range(len(tbcnt) - 1):
             pg = []
-            for j, tb_items in enumerate(recos[tbcnt[i] : tbcnt[i + 1]]):  # for table
-                poss = pos[tbcnt[i] : tbcnt[i + 1]]
-                for it in tb_items:  # for table components
+            for j, tb_items in enumerate(recos[tbcnt[i]: tbcnt[i + 1]]):
+                poss = pos[tbcnt[i]: tbcnt[i + 1]]
+                for it in tb_items:
                     it["x0"] = it["x0"] + poss[j][0]
                     it["x1"] = it["x1"] + poss[j][0]
                     it["top"] = it["top"] + poss[j][1]
@@ -239,7 +433,6 @@ class RAGFlowPdfParser:
             eles = Recognizer.layouts_cleanup(self.boxes, eles, 5, ption)
             return Recognizer.sort_Y_firstly(eles, 0)
 
-        # add R,H,C,SP tag to boxes within table layout
         headers = gather(r".*header$")
         rows = gather(r".* (row|header)")
         spans = gather(r".*spanning")
@@ -295,7 +488,6 @@ class RAGFlowPdfParser:
             self.mean_height[pagenum - 1] / 3,
         )
 
-        # merge chars in the same rect
         for c in chars:
             ii = Recognizer.find_overlapped(c, bxs)
             if ii is None:
@@ -308,17 +500,26 @@ class RAGFlowPdfParser:
                 continue
             bxs[ii]["chars"].append(c)
 
+        closing_punct = set(".,;:!?…%)]}»”’")
+
         for b in bxs:
             if not b["chars"]:
                 del b["chars"]
                 continue
             m_ht = np.mean([c["height"] for c in b["chars"]])
             for c in Recognizer.sort_Y_firstly(b["chars"], m_ht):
-                if c["text"] == " " and b["text"]:
-                    if re.match(r"[0-9a-zA-Zа-яА-Я,.?;:!%%]", b["text"][-1]):
+                ch = ud.normalize("NFC", c["text"] or "")
+                if ch.isspace() and b["text"]:
+                    last = b["text"][-1]
+                    if last.isalnum() or last in closing_punct:
                         b["text"] += " "
-                else:
-                    b["text"] += c["text"]
+                    continue
+                if ch in closing_punct:
+                    b["text"] = b["text"].rstrip()
+                    b["text"] += ch
+                    continue
+                b["text"] += ch
+
             del b["chars"]
 
         logging.info(f"__ocr sorting {len(chars)} chars cost {timer() - start}s")
@@ -331,7 +532,23 @@ class RAGFlowPdfParser:
                 b["box_image"] = self.ocr.get_rotate_crop_image(img_np, np.array([[left, top], [right, top], [right, bott], [left, bott]], dtype=np.float32))
                 boxes_to_reg.append(b)
             del b["txt"]
-        texts = self.ocr.recognize_batch([b["box_image"] for b in boxes_to_reg], device_id)
+        texts: list[str] = []
+        use_vision_model = bool(self._vision_model) and self._force_vi_full_ocr
+        if boxes_to_reg and use_vision_model:
+            texts = self._vision_recognize_batch(
+                [b["box_image"] for b in boxes_to_reg],
+                page_number=pagenum,
+            )
+            if len(texts) != len(boxes_to_reg):
+                logging.warning(
+                    "Vision OCR returned %s entries for %s boxes on page %s; falling back to built-in recognizer.",
+                    len(texts),
+                    len(boxes_to_reg),
+                    pagenum,
+                )
+                texts = []
+        if not texts and boxes_to_reg:
+            texts = self.ocr.recognize_batch([b["box_image"] for b in boxes_to_reg], device_id)
         for i in range(len(boxes_to_reg)):
             boxes_to_reg[i]["text"] = texts[i]
             del boxes_to_reg[i]["box_image"]
@@ -341,16 +558,51 @@ class RAGFlowPdfParser:
             self.mean_height[pagenum - 1] = np.median([b["bottom"] - b["top"] for b in bxs])
         self.boxes.append(bxs)
 
+    def _vision_recognize_batch(self, crops: list[np.ndarray], page_number: int) -> list[str]:
+        if not self._vision_model:
+            return []
+
+        results: list[str] = []
+        prompt = (
+            "You are an OCR assistant. Transcribe the Vietnamese text in this cropped PDF region verbatim, "
+            "preserving punctuation and spacing."
+        )
+
+        for idx, crop in enumerate(crops, start=1):
+            try:
+                pil_img = Image.fromarray(crop)
+            except Exception:
+                logging.warning("Failed to convert crop %s on page %s to image for vision OCR.", idx, page_number, exc_info=True)
+                results.append("")
+                continue
+
+            try:
+                text = picture_vision_llm_chunk(
+                    binary=pil_img,
+                    vision_model=self._vision_model,
+                    prompt=prompt,
+                )
+            except Exception:
+                logging.warning(
+                    "Vision OCR failed on crop %s of page %s; using empty string.",
+                    idx,
+                    page_number,
+                    exc_info=True,
+                )
+                text = ""
+
+            results.append(text.strip())
+
+        return results
+
     def _layouts_rec(self, ZM, drop=True):
         assert len(self.page_images) == len(self.boxes)
         self.boxes, self.page_layout = self.layouter(self.page_images, self.boxes, ZM, drop=drop)
-        # cumlative Y
         for i in range(len(self.boxes)):
             self.boxes[i]["top"] += self.page_cum_height[self.boxes[i]["page_number"] - 1]
             self.boxes[i]["bottom"] += self.page_cum_height[self.boxes[i]["page_number"] - 1]
 
     def _text_merge(self):
-        # merge adjusted boxes
         bxs = self.boxes
 
         def end_with(b, txt):
@@ -362,7 +614,6 @@ class RAGFlowPdfParser:
             tt = b.get("text", "").strip()
             return tt and any([tt.find(t.strip()) == 0 for t in txts])
 
-        # horizontally merge adjacent box with the same layout
         i = 0
         while i < len(bxs) - 1:
             b = bxs[i]
@@ -371,7 +622,6 @@ class RAGFlowPdfParser:
                 i += 1
                 continue
             if abs(self._y_dis(b, b_)) < self.mean_height[bxs[i]["page_number"] - 1] / 3:
-                # merge
                 bxs[i]["x1"] = b_["x1"]
                 bxs[i]["top"] = (b["top"] + b_["top"]) / 2
                 bxs[i]["bottom"] = (b["bottom"] + b_["bottom"]) / 2
@@ -391,7 +641,6 @@ class RAGFlowPdfParser:
                     continue
 
             if abs(self._y_dis(b, b_)) < self.mean_height[bxs[i]["page_number"] - 1] / 5 and dis >= dis_thr and b["x1"] < b_["x1"]:
-                # merge
                 bxs[i]["x1"] = b_["x1"]
                 bxs[i]["top"] = (b["top"] + b_["top"]) / 2
                 bxs[i]["bottom"] = (b["bottom"] + b_["bottom"]) / 2
@@ -428,7 +677,6 @@ class RAGFlowPdfParser:
                 len(b["text"].strip()) > 1 and b["text"].strip()[-2] in ",;:'\"，‘“、；：",
                 b_["text"].strip() and b_["text"].strip()[0] in "。；？！?”）),，、：",
             ]
-            # features for not concating
             feats = [
                 b.get("layoutno", 0) != b_.get("layoutno", 0),
                 b["text"].strip()[-1] in "。？！?",
@@ -436,7 +684,6 @@ class RAGFlowPdfParser:
                 b["page_number"] == b_["page_number"] and b_["top"] - b["bottom"] > self.mean_height[b["page_number"] - 1] * 1.5,
                 b["page_number"] < b_["page_number"] and abs(b["x0"] - b_["x0"]) > self.mean_width[b["page_number"] - 1] * 4,
             ]
-            # split features
             detach_feats = [b["x1"] < b_["x0"], b["x0"] > b_["x1"]]
             if (any(feats) and not any(concatting_feats)) or any(detach_feats):
                 logging.debug(
@@ -449,9 +696,8 @@ class RAGFlowPdfParser:
                 )
                 i += 1
                 continue
-            # merge up and down
             b["bottom"] = b_["bottom"]
-            b["text"] += b_["text"]
+            b["text"] = b["text"] + " " + b_["text"]
             b["x0"] = min(b["x0"], b_["x0"])
             b["x1"] = max(b["x1"], b_["x1"])
             bxs.pop(i + 1)
@@ -461,7 +707,6 @@ class RAGFlowPdfParser:
         self.boxes = Recognizer.sort_Y_firstly(self.boxes, 0)
         return
 
-        # count boxes in the same row as a feature
         for i in range(len(self.boxes)):
             mh = self.mean_height[self.boxes[i]["page_number"] - 1]
             self.boxes[i]["in_row"] = 0
@@ -477,7 +722,6 @@ class RAGFlowPdfParser:
                     break
                 j += 1
 
-        # concat between rows
         boxes = deepcopy(self.boxes)
         blocks = []
         while boxes:
@@ -536,7 +780,6 @@ class RAGFlowPdfParser:
             if chunks:
                 blocks.append(chunks)
 
-        # concat within each block
         boxes = []
         for b in blocks:
             if len(b) == 1:
@@ -567,7 +810,10 @@ class RAGFlowPdfParser:
         findit = False
         i = 0
         while i < len(self.boxes):
-            if not re.match(r"(contents|目录|目次|table of contents|致谢|acknowledge)$", re.sub(r"( | |\u3000)+", "", self.boxes[i]["text"].lower())):
+            if not re.match(
+                r"(contents|目录|目次|table of contents|致谢|acknowledge|mục lục|lời cảm ơn|lời cảm tạ|tài liệu tham khảo|phụ lục|lời mở đầu|lời nói đầu)$",
+                re.sub(r"( | |\u3000)+", "", self.boxes[i]["text"].lower())
+            ):
                 i += 1
                 continue
             findit = True
@@ -636,7 +882,6 @@ class RAGFlowPdfParser:
     def _extract_table_figure(self, need_image, ZM, return_html, need_position, separate_tables_figures=False):
         tables = {}
         figures = {}
-        # extract figure and table boxes
         i = 0
         lst_lout_no = ""
         nomerge_lout_no = []
@@ -669,7 +914,6 @@ class RAGFlowPdfParser:
                 continue
             i += 1
 
-        # merge table on different pages
         nomerge_lout_no = set(nomerge_lout_no)
         tbls = sorted([(k, bxs) for k, bxs in tables.items()], key=lambda x: (x[1][0]["top"], x[1][0]["x0"]))
 
@@ -693,16 +937,13 @@ class RAGFlowPdfParser:
         def x_overlapped(a, b):
             return not any([a["x1"] < b["x0"], a["x0"] > b["x1"]])
 
-        # find captions and pop out
         i = 0
         while i < len(self.boxes):
             c = self.boxes[i]
-            # mh = self.mean_height[c["page_number"]-1]
             if not TableStructureRecognizer.is_caption(c):
                 i += 1
                 continue
 
-            # find the nearest layouts
             def nearest(tbls):
                 nonlocal c
                 mink = ""
@@ -721,9 +962,6 @@ class RAGFlowPdfParser:
 
             tk, tv = nearest(tables)
             fk, fv = nearest(figures)
-            # if min(tv, fv) > 2000:
-            #    i += 1
-            #    continue
             if tv < fv and tk:
                 tables[tk].insert(0, c)
                 logging.debug("TABLE:" + self.boxes[i]["text"] + "; Cap: " + tk)
@@ -770,7 +1008,6 @@ class RAGFlowPdfParser:
         positions = []
         figure_results = []
         figure_positions = []
-        # crop figure out and add caption
         for k, bxs in figures.items():
             txt = "\n".join([b["text"] for b in bxs])
             if not txt:
@@ -811,12 +1048,25 @@ class RAGFlowPdfParser:
     def proj_match(self, line):
         if len(line) <= 2:
             return
-        if re.match(r"[0-9 ().,%%+/-]+$", line):
+        if re.match(r"[0-9 ().,%+/\-]+$", line):
             return False
+
+        vi_rules = [
+            (r"^(Chương|Phần)\s+([IVXLCDM]+|\d+)\b", 101),
+            (r"^(Mục|Điều)\s+(\d+|[IVXLCDM]+)(\.\d+){0,3}\b", 102),
+            (r"^(\d+(?:\.\d+){1,3})\.?\s+.+$", 103),
+            (r"^\(?([0-9]{1,2}|[ivxlcdm]{1,4}|[a-z])[\).]\s+.+$", 104),
+            (r"[A-ZÀ-ỴĐ][A-ZÀ-Ỵ0-9 \-/&,.()“”\"'–—:+]{3,}$", 105),
+            (r".{,80}[：:？?]$", 106),
+        ]
+        for p, j in vi_rules:
+            if re.match(p, line, flags=re.I):
+                return j
+
         for p, j in [
             (r"第[零一二三四五六七八九十百]+章", 1),
             (r"第[零一二三四五六七八九十百]+[条节]", 2),
-            (r"[零一二三四五六七八九十百]+[、 　]", 3),
+            (r"[零一二三四五六七八九十百]+[、是 　]", 3),
             (r"[\(（][零一二三四五六七八九十百]+[）\)]", 4),
             (r"[0-9]+(、|\.[　 ]|\.[^0-9])", 5),
             (r"[0-9]+\.[0-9]+(、|[. 　]|[^0-9])", 6),
@@ -885,8 +1135,6 @@ class RAGFlowPdfParser:
                     if not usefull(boxes[i]):
                         continue
                     if mmj or (self._x_dis(boxes[i], line) < pw / 10):
-                        # and abs(width(boxes[i])-width_mean)/max(width(boxes[i]),width_mean)<0.5):
-                        # concat following
                         dfs(boxes[i], i)
                         boxes.pop(i)
                         break
@@ -938,13 +1186,17 @@ class RAGFlowPdfParser:
                         self.page_chars = [[c for c in page.dedupe_chars().chars if self._has_color(c)] for page in self.pdf.pages[page_from:page_to]]
                     except Exception as e:
                         logging.warning(f"Failed to extract characters for pages {page_from}-{page_to}: {str(e)}")
-                        self.page_chars = [[] for _ in range(page_to - page_from)]  # If failed to extract, using empty list instead.
+                        self.page_chars = [[] for _ in range(page_to - page_from)]
 
                     self.total_page = len(self.pdf.pages)
 
         except Exception:
             logging.exception("RAGFlowPdfParser __images__")
         logging.info(f"__images__ dedupe_chars cost {timer() - start}s")
+
+        self._force_vi_full_ocr = self._should_force_vietnamese_ocr()
+        if self._force_vi_full_ocr:
+            logging.info("Detected unreliable Vietnamese text extraction; forcing OCR for all text boxes.")
 
         self.outlines = []
         try:
@@ -977,6 +1229,8 @@ class RAGFlowPdfParser:
             self.is_english = True
         else:
             self.is_english = False
+        if self._force_vi_full_ocr:
+            self.is_english = False
 
         async def __img_ocr(i, id, img, chars, limiter):
             j = 0
@@ -1001,7 +1255,10 @@ class RAGFlowPdfParser:
 
         async def __img_ocr_launcher():
             def __ocr_preprocess():
-                chars = self.page_chars[i] if not self.is_english else []
+                if self._force_vi_full_ocr:
+                    chars = []
+                else:
+                    chars = self.page_chars[i] if not self.is_english else []
                 self.mean_height.append(np.median(sorted([c["height"] for c in chars])) if chars else 0)
                 self.mean_width.append(np.median(sorted([c["width"] for c in chars])) if chars else 8)
                 self.page_cum_height.append(img.size[1] / zoomin)
@@ -1233,8 +1490,29 @@ class VisionParser(RAGFlowPdfParser):
     def __init__(self, vision_model, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.vision_model = vision_model
+        self._vi_hdr_sigs = {"chapter": set(), "section": set(), "subsection": set(), "misc": set()}
+        self._vi_hdr_sig_counts = {"chapter": {}, "section": {}, "subsection": {}, "misc": {}}
 
     def __images__(self, fnm, zoomin=3, page_from=0, page_to=299, callback=None):
+        def _sample_text_for_lang(pchars, k=200):
+            arr = [c["text"] for c in pchars]
+            if not arr:
+                return ""
+            return "".join(random.choices(arr, k=min(k, len(arr))))
+
+        vi_letters = r"[À-Ỵà-ỵĂăÂâÊêÔôƠơƯưĐđ]"
+        vi_words = r"\b(chương|phần|mục|điều|kết\s*luận|tài\s*liệu\s*tham\s*khảo|phụ\s*lục|lời\s*(mở\s*đầu|nói\s*đầu|cảm\s*ơn|cảm\s*tạ))\b"
+        try:
+            samples = []
+            for i in range(len(self.page_chars)):
+                txt = _sample_text_for_lang(self.page_chars[i], k=300)
+                if txt:
+                    samples.append(txt)
+            big = "".join(samples[:10])
+        except Exception:
+            big = ""
+
+        self.is_vietnamese = bool(re.search(vi_letters, big)) or bool(re.search(vi_words, big, flags=re.I))
         try:
             with sys.modules[LOCK_KEY_pdfplumber]:
                 self.pdf = pdfplumber.open(fnm) if isinstance(fnm, str) else pdfplumber.open(BytesIO(fnm))
@@ -1258,7 +1536,7 @@ class VisionParser(RAGFlowPdfParser):
         all_docs = []
 
         for idx, img_binary in enumerate(self.page_images or []):
-            pdf_page_num = idx  # 0-based
+            pdf_page_num = idx
             if pdf_page_num < start_page or pdf_page_num >= end_page:
                 continue
 

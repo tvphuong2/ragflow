@@ -188,7 +188,15 @@ class Parser(ProcessBase):
         self.set_output("output_format", conf["output_format"])
 
         if conf.get("parse_method") == "deepdoc":
-            bboxes = RAGFlowPdfParser().parse_into_bboxes(blob, callback=self.callback)
+            vision_model = None
+            try:
+                vision_model = LLMBundle(self._canvas._tenant_id, LLMType.IMAGE2TEXT)
+            except Exception:
+                logging.warning(
+                    "Failed to initialize IMAGE2TEXT model for DeepDoc Vietnamese OCR fallback; proceeding with built-in recognizer.",
+                    exc_info=True,
+                )
+            bboxes = RAGFlowPdfParser(vision_model=vision_model).parse_into_bboxes(blob, callback=self.callback)
         elif conf.get("parse_method") == "plain_text":
             lines, _ = PlainParser()(blob)
             bboxes = [{"text": t} for t, _ in lines]

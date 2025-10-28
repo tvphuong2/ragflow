@@ -411,6 +411,14 @@ def get_parser_config(chunk_method, parser_config):
         "paper": {"raptor": {"use_raptor": False}, "graphrag": {"use_graphrag": False}},
         "book": {"raptor": {"use_raptor": False}, "graphrag": {"use_graphrag": False}},
         "laws": {"raptor": {"use_raptor": False}, "graphrag": {"use_graphrag": False}},
+        "laws_html": {
+            "chunk_token_num": 512,
+            "delimiter": r"\n!?。；！？",
+            "layout_recognize": "DeepDocHTML",
+            "raptor": {"use_raptor": False},
+            "graphrag": {"use_graphrag": False},
+        },
+        "policy": {"chunk_token_num": 512, "delimiter": r"\n!?。；！？", "layout_recognize": "DeepDocVN", "raptor": {"use_raptor": False}, "graphrag": {"use_graphrag": False}},
         "presentation": {"raptor": {"use_raptor": False}, "graphrag": {"use_graphrag": False}},
         "one": None,
         "knowledge_graph": {

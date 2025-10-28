@@ -54,20 +54,22 @@ export function SavingButton() {
 
   return (
     <ButtonLoading
+      type="button"
       loading={submitLoading}
       onClick={() => {
         (async () => {
           try {
-            let beValid = await form.formControl.trigger();
-            if (beValid) {
-              form.handleSubmit(async (values) => {
-                console.log('saveKnowledgeConfiguration: ', values);
-                delete values['avatar'];
-                await saveKnowledgeConfiguration({
-                  kb_id,
-                  ...values,
-                });
-              })();
+            const isValid = await form.trigger(undefined, {
+              shouldFocus: true,
+            });
+
+            if (isValid) {
+              const { avatar, ...values } = form.getValues();
+              void avatar;
+              await saveKnowledgeConfiguration({
+                kb_id,
+                ...values,
+              });
             }
           } catch (e) {
             console.log(e);

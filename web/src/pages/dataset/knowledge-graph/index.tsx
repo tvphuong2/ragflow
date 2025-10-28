@@ -1,6 +1,7 @@
 import { ConfirmDeleteDialog } from '@/components/confirm-delete-dialog';
 import { Button } from '@/components/ui/button';
 import { useFetchKnowledgeGraph } from '@/hooks/use-knowledge-request';
+import { Empty } from 'antd';
 import { Trash2 } from 'lucide-react';
 import React from 'react';
 import { useTranslation } from 'react-i18next';
@@ -11,6 +12,11 @@ const KnowledgeGraph: React.FC = () => {
   const { data } = useFetchKnowledgeGraph();
   const { t } = useTranslation();
   const { handleDeleteKnowledgeGraph } = useDeleteKnowledgeGraph();
+  const hasGraphData =
+    Array.isArray(data?.graph?.nodes) && data.graph.nodes.length > 0;
+  const emptyDescription = t('knowledgeDetails.noKnowledgeGraph', {
+    defaultValue: t('common.noData'),
+  });
 
   return (
     <section className={'w-full h-[90dvh] relative p-6'}>
@@ -23,7 +29,13 @@ const KnowledgeGraph: React.FC = () => {
           <Trash2 /> {t('common.delete')}
         </Button>
       </ConfirmDeleteDialog>
-      <ForceGraph data={data?.graph} show></ForceGraph>
+      {hasGraphData ? (
+        <ForceGraph data={data?.graph} show />
+      ) : (
+        <div className="flex h-full items-center justify-center">
+          <Empty description={emptyDescription} />
+        </div>
+      )}
     </section>
   );
 };

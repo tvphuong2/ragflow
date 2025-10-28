@@ -94,6 +94,8 @@ export default {
       noMoreData: '没有更多数据了',
     },
     knowledgeDetails: {
+      deepDocVn: 'DeepDoc（越南语）',
+      deepDocHtml: 'DeepDoc（HTML）',
       generate: '生成',
       raptor: 'Raptor',
       knowledgeGraph: '知识图谱',
@@ -299,6 +301,9 @@ export default {
       </p><p>
       chunk的粒度与'ARTICLE'一致，所有上层文本都会包含在chunk中。
       </p>`,
+      policy: `<p>支持的文件格式为<b>DOCX</b>、<b>PDF</b>、<b>TXT</b>。</p><p>
+      针对政策制度类文档按标题层级进行拆分，让每个分块都携带对应段落的 Markdown 结构。</p><p>
+      解析器还会在文档开头提取标题、简介、前言及目录等信息，确保检索阶段拥有完整上下文。</p>`,
       manual: `<p>仅支持<b>PDF</b>。</p><p>
       我们假设手册具有分层部分结构。 我们使用最低的部分标题作为对文档进行切片的枢轴。
       因此，同一部分中的图和表不会被分割，并且块大小可能会很大。

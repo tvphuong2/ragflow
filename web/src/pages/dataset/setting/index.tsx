@@ -46,7 +46,7 @@ export default function DatasetSettings() {
       parser_id: DocumentParserType.Naive,
       permission: PermissionRole.Me,
       parser_config: {
-        layout_recognize: DocumentType.DeepDOC,
+        layout_recognize: DocumentType.DeepDocVN,
         chunk_token_num: 512,
         delimiter: `\n`,
         auto_keywords: 0,
