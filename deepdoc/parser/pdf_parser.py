@@ -86,8 +86,11 @@ if LOCK_KEY_pdfplumber not in sys.modules:
     sys.modules[LOCK_KEY_pdfplumber] = threading.Lock()
 
 
+from PIL import Image
+
+
 class RAGFlowPdfParser:
-    def __init__(self, **kwargs):
+    def __init__(self, vision_model=None, **kwargs):
         """
         If you have trouble downloading HuggingFace models, -_^ this might help!!
 
@@ -101,6 +104,7 @@ class RAGFlowPdfParser:
         """
 
         self.ocr = OCR()
+        self._vision_model = vision_model
         self.parallel_limiter = None
         if PARALLEL_DEVICES > 1:
             self.parallel_limiter = [trio.CapacityLimiter(1) for _ in range(PARALLEL_DEVICES)]
@@ -528,7 +532,23 @@ class RAGFlowPdfParser:
                 b["box_image"] = self.ocr.get_rotate_crop_image(img_np, np.array([[left, top], [right, top], [right, bott], [left, bott]], dtype=np.float32))
                 boxes_to_reg.append(b)
             del b["txt"]
-        texts = self.ocr.recognize_batch([b["box_image"] for b in boxes_to_reg], device_id)
+        texts: list[str] = []
+        use_vision_model = bool(self._vision_model) and self._force_vi_full_ocr
+        if boxes_to_reg and use_vision_model:
+            texts = self._vision_recognize_batch(
+                [b["box_image"] for b in boxes_to_reg],
+                page_number=pagenum,
+            )
+            if len(texts) != len(boxes_to_reg):
+                logging.warning(
+                    "Vision OCR returned %s entries for %s boxes on page %s; falling back to built-in recognizer.",
+                    len(texts),
+                    len(boxes_to_reg),
+                    pagenum,
+                )
+                texts = []
+        if not texts and boxes_to_reg:
+            texts = self.ocr.recognize_batch([b["box_image"] for b in boxes_to_reg], device_id)
         for i in range(len(boxes_to_reg)):
             boxes_to_reg[i]["text"] = texts[i]
             del boxes_to_reg[i]["box_image"]
@@ -537,6 +557,43 @@ class RAGFlowPdfParser:
         if self.mean_height[pagenum - 1] == 0:
             self.mean_height[pagenum - 1] = np.median([b["bottom"] - b["top"] for b in bxs])
         self.boxes.append(bxs)
+
+    def _vision_recognize_batch(self, crops: list[np.ndarray], page_number: int) -> list[str]:
+        if not self._vision_model:
+            return []
+
+        results: list[str] = []
+        prompt = (
+            "You are an OCR assistant. Transcribe the Vietnamese text in this cropped PDF region verbatim, "
+            "preserving punctuation and spacing."
+        )
+
+        for idx, crop in enumerate(crops, start=1):
+            try:
+                pil_img = Image.fromarray(crop)
+            except Exception:
+                logging.warning("Failed to convert crop %s on page %s to image for vision OCR.", idx, page_number, exc_info=True)
+                results.append("")
+                continue
+
+            try:
+                text = picture_vision_llm_chunk(
+                    binary=pil_img,
+                    vision_model=self._vision_model,
+                    prompt=prompt,
+                )
+            except Exception:
+                logging.warning(
+                    "Vision OCR failed on crop %s of page %s; using empty string.",
+                    idx,
+                    page_number,
+                    exc_info=True,
+                )
+                text = ""
+
+            results.append(text.strip())
+
+        return results
 
     def _layouts_rec(self, ZM, drop=True):
         assert len(self.page_images) == len(self.boxes)
