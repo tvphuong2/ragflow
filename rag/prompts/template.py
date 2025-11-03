@@ -5,6 +5,12 @@ PROMPT_DIR = os.path.dirname(__file__)
 
 _loaded_prompts = {}
 
+_VIETNAMESE_NOTE = (
+    "\n\nChú ý (Tiếng Việt): Khi phản hồi, hãy bổ sung chú thích hoặc giải thích ngắn gọn "
+    "bằng tiếng Việt để hỗ trợ người dùng, nhưng vẫn đảm bảo nội dung chính và định dạng "
+    "được yêu cầu trình bày bằng tiếng Anh."
+)
+
 
 def load_prompt(name: str) -> str:
     if name in _loaded_prompts:
@@ -16,5 +22,7 @@ def load_prompt(name: str) -> str:
 
     with open(path, "r", encoding="utf-8") as f:
         content = f.read().strip()
+        if _VIETNAMESE_NOTE.strip() not in content:
+            content = f"{content}{_VIETNAMESE_NOTE}"
         _loaded_prompts[name] = content
         return content
