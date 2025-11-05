@@ -8,6 +8,9 @@ const ajv = new Ajv({
   strict: false,
   validateSchema: false,
   validateFormats: false,
+  // Enable source code generation so ajv-formats can safely access ajv.opts.code
+  // when running inside the browser bundle.
+  code: { source: true },
 });
 addFormats(ajv);
 
