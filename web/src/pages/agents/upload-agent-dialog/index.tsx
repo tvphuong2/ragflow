@@ -4,6 +4,7 @@ import {
   DialogContent,
   DialogFooter,
   DialogHeader,
+  DialogDescription,
   DialogTitle,
 } from '@/components/ui/dialog';
 import { IModalProps } from '@/interfaces/common';
@@ -23,6 +24,12 @@ export function UploadAgentDialog({
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>{t('fileManager.uploadFile')}</DialogTitle>
+          <DialogDescription>
+            {t('flow.uploadAgentDialogDescription', {
+              defaultValue:
+                'Select an exported agent file to import and review the details before saving.',
+            })}
+          </DialogDescription>
         </DialogHeader>
         <UploadAgentForm hideModal={hideModal} onOk={onOk}></UploadAgentForm>
         <DialogFooter>
