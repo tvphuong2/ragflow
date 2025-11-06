@@ -26,10 +26,10 @@ from common.misc_utils import pip_install_torch
 from rag.settings import PARALLEL_DEVICES
 from .operators import *  # noqa: F403
 from . import operators
-import math
 import numpy as np
 import cv2
 import onnxruntime as ort
+from PIL import Image
 
 from .postprocess import build_post_process
 
@@ -133,284 +133,115 @@ def load_model(model_dir, nm, device_id: int | None = None):
 
 class TextRecognizer:
     def __init__(self, model_dir, device_id: int | None = None):
-        self.rec_image_shape = [int(v) for v in "3, 48, 320".split(",")]
-        self.rec_batch_num = 16
-        postprocess_params = {
-            'name': 'CTCLabelDecode',
-            "character_dict_path": os.path.join(model_dir, "ocr.res"),
-            "use_space_char": True
-        }
-        self.postprocess_op = build_post_process(postprocess_params)
-        self.predictor, self.run_options = load_model(model_dir, 'rec', device_id)
-        self.input_tensor = self.predictor.get_inputs()[0]
+        try:
+            from vietocr.tool.config import Cfg
+            from vietocr.tool.predictor import Predictor
+        except ImportError as exc:
+            raise ImportError(
+                "VietOCR is required for text recognition. Please install the 'vietocr' package."
+            ) from exc
 
-    def resize_norm_img(self, img, max_wh_ratio):
-        imgC, imgH, imgW = self.rec_image_shape
+        pip_install_torch()
+        try:
+            import torch
+        except ImportError as exc:
+            raise ImportError(
+                "PyTorch is required for VietOCR text recognition."
+            ) from exc
 
-        assert imgC == img.shape[2]
-        imgW = int((imgH * max_wh_ratio))
-        w = self.input_tensor.shape[3:][0]
-        if isinstance(w, str):
-            pass
-        elif w is not None and w > 0:
-            imgW = w
-        h, w = img.shape[:2]
-        ratio = w / float(h)
-        if math.ceil(imgH * ratio) > imgW:
-            resized_w = imgW
+        target_device = "cpu"
+        if torch.cuda.is_available():
+            requested_id = 0 if device_id is None else device_id
+            if requested_id < torch.cuda.device_count():
+                target_device = f"cuda:{requested_id}"
+            else:
+                logging.warning(
+                    "Requested CUDA device %s is not available. Falling back to CPU.",
+                    requested_id,
+                )
+        self.rec_batch_num = max(1, int(os.environ.get("VIETOCR_BATCH_SIZE", "4")))
+
+        config_name = os.environ.get("VIETOCR_CONFIG_NAME", "vgg_seq2seq")
+        cfg = Cfg.load_config_from_name(config_name)
+        cfg["device"] = target_device
+        if "cnn" in cfg and isinstance(cfg["cnn"], dict):
+            cfg["cnn"]["pretrained"] = False
+        beamsearch_env = os.environ.get("VIETOCR_BEAMSEARCH")
+        if beamsearch_env is not None and "predictor" in cfg and isinstance(cfg["predictor"], dict):
+            cfg["predictor"]["beamsearch"] = beamsearch_env.lower() in {"1", "true", "yes", "y"}
+
+        weights_path = os.environ.get("VIETOCR_WEIGHTS_PATH")
+        if not weights_path and model_dir:
+            candidate_path = os.path.join(model_dir, "vietocr.pth")
+            if os.path.isfile(candidate_path):
+                weights_path = candidate_path
+        if weights_path:
+            cfg["weights"] = weights_path
+
+        self.predictor = Predictor(cfg)
+        self._predict_batch = getattr(self.predictor, "predict_batch", None)
+
+    def _to_pil(self, img):
+        if isinstance(img, Image.Image):
+            return img
+        if img is None:
+            raise ValueError("Image for OCR recognition is None")
+        if len(img.shape) == 2:
+            return Image.fromarray(img)
+        if img.shape[2] == 1:
+            return Image.fromarray(img[:, :, 0])
+        return Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+
+    def _normalize_prediction(self, prediction):
+        if isinstance(prediction, tuple):
+            text, prob = prediction
         else:
-            resized_w = int(math.ceil(imgH * ratio))
-
-        resized_image = cv2.resize(img, (resized_w, imgH))
-        resized_image = resized_image.astype('float32')
-        resized_image = resized_image.transpose((2, 0, 1)) / 255
-        resized_image -= 0.5
-        resized_image /= 0.5
-        padding_im = np.zeros((imgC, imgH, imgW), dtype=np.float32)
-        padding_im[:, :, 0:resized_w] = resized_image
-        return padding_im
-
-    def resize_norm_img_vl(self, img, image_shape):
-
-        imgC, imgH, imgW = image_shape
-        img = img[:, :, ::-1]  # bgr2rgb
-        resized_image = cv2.resize(
-            img, (imgW, imgH), interpolation=cv2.INTER_LINEAR)
-        resized_image = resized_image.astype('float32')
-        resized_image = resized_image.transpose((2, 0, 1)) / 255
-        return resized_image
-
-    def resize_norm_img_srn(self, img, image_shape):
-        imgC, imgH, imgW = image_shape
-
-        img_black = np.zeros((imgH, imgW))
-        im_hei = img.shape[0]
-        im_wid = img.shape[1]
-
-        if im_wid <= im_hei * 1:
-            img_new = cv2.resize(img, (imgH * 1, imgH))
-        elif im_wid <= im_hei * 2:
-            img_new = cv2.resize(img, (imgH * 2, imgH))
-        elif im_wid <= im_hei * 3:
-            img_new = cv2.resize(img, (imgH * 3, imgH))
+            text, prob = prediction, 1.0
+        if isinstance(prob, (list, tuple)):
+            prob = prob[0] if prob else 1.0
+        if hasattr(prob, "item"):
+            prob = float(prob.item())
         else:
-            img_new = cv2.resize(img, (imgW, imgH))
+            try:
+                prob = float(prob)
+            except (TypeError, ValueError):
+                prob = 1.0
+        return text, prob
 
-        img_np = np.asarray(img_new)
-        img_np = cv2.cvtColor(img_np, cv2.COLOR_BGR2GRAY)
-        img_black[:, 0:img_np.shape[1]] = img_np
-        img_black = img_black[:, :, np.newaxis]
-
-        row, col, c = img_black.shape
-        c = 1
-
-        return np.reshape(img_black, (c, row, col)).astype(np.float32)
-
-    def srn_other_inputs(self, image_shape, num_heads, max_text_length):
-
-        imgC, imgH, imgW = image_shape
-        feature_dim = int((imgH / 8) * (imgW / 8))
-
-        encoder_word_pos = np.array(range(0, feature_dim)).reshape(
-            (feature_dim, 1)).astype('int64')
-        gsrm_word_pos = np.array(range(0, max_text_length)).reshape(
-            (max_text_length, 1)).astype('int64')
-
-        gsrm_attn_bias_data = np.ones((1, max_text_length, max_text_length))
-        gsrm_slf_attn_bias1 = np.triu(gsrm_attn_bias_data, 1).reshape(
-            [-1, 1, max_text_length, max_text_length])
-        gsrm_slf_attn_bias1 = np.tile(
-            gsrm_slf_attn_bias1,
-            [1, num_heads, 1, 1]).astype('float32') * [-1e9]
-
-        gsrm_slf_attn_bias2 = np.tril(gsrm_attn_bias_data, -1).reshape(
-            [-1, 1, max_text_length, max_text_length])
-        gsrm_slf_attn_bias2 = np.tile(
-            gsrm_slf_attn_bias2,
-            [1, num_heads, 1, 1]).astype('float32') * [-1e9]
-
-        encoder_word_pos = encoder_word_pos[np.newaxis, :]
-        gsrm_word_pos = gsrm_word_pos[np.newaxis, :]
-
-        return [
-            encoder_word_pos, gsrm_word_pos, gsrm_slf_attn_bias1,
-            gsrm_slf_attn_bias2
-        ]
-
-    def process_image_srn(self, img, image_shape, num_heads, max_text_length):
-        norm_img = self.resize_norm_img_srn(img, image_shape)
-        norm_img = norm_img[np.newaxis, :]
-
-        [encoder_word_pos, gsrm_word_pos, gsrm_slf_attn_bias1, gsrm_slf_attn_bias2] = \
-            self.srn_other_inputs(image_shape, num_heads, max_text_length)
-
-        gsrm_slf_attn_bias1 = gsrm_slf_attn_bias1.astype(np.float32)
-        gsrm_slf_attn_bias2 = gsrm_slf_attn_bias2.astype(np.float32)
-        encoder_word_pos = encoder_word_pos.astype(np.int64)
-        gsrm_word_pos = gsrm_word_pos.astype(np.int64)
-
-        return (norm_img, encoder_word_pos, gsrm_word_pos, gsrm_slf_attn_bias1,
-                gsrm_slf_attn_bias2)
-
-    def resize_norm_img_sar(self, img, image_shape,
-                            width_downsample_ratio=0.25):
-        imgC, imgH, imgW_min, imgW_max = image_shape
-        h = img.shape[0]
-        w = img.shape[1]
-        valid_ratio = 1.0
-        # make sure new_width is an integral multiple of width_divisor.
-        width_divisor = int(1 / width_downsample_ratio)
-        # resize
-        ratio = w / float(h)
-        resize_w = math.ceil(imgH * ratio)
-        if resize_w % width_divisor != 0:
-            resize_w = round(resize_w / width_divisor) * width_divisor
-        if imgW_min is not None:
-            resize_w = max(imgW_min, resize_w)
-        if imgW_max is not None:
-            valid_ratio = min(1.0, 1.0 * resize_w / imgW_max)
-            resize_w = min(imgW_max, resize_w)
-        resized_image = cv2.resize(img, (resize_w, imgH))
-        resized_image = resized_image.astype('float32')
-        # norm
-        if image_shape[0] == 1:
-            resized_image = resized_image / 255
-            resized_image = resized_image[np.newaxis, :]
-        else:
-            resized_image = resized_image.transpose((2, 0, 1)) / 255
-        resized_image -= 0.5
-        resized_image /= 0.5
-        resize_shape = resized_image.shape
-        padding_im = -1.0 * np.ones((imgC, imgH, imgW_max), dtype=np.float32)
-        padding_im[:, :, 0:resize_w] = resized_image
-        pad_shape = padding_im.shape
-
-        return padding_im, resize_shape, pad_shape, valid_ratio
-
-    def resize_norm_img_spin(self, img):
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        # return padding_im
-        img = cv2.resize(img, tuple([100, 32]), cv2.INTER_CUBIC)
-        img = np.array(img, np.float32)
-        img = np.expand_dims(img, -1)
-        img = img.transpose((2, 0, 1))
-        mean = [127.5]
-        std = [127.5]
-        mean = np.array(mean, dtype=np.float32)
-        std = np.array(std, dtype=np.float32)
-        mean = np.float32(mean.reshape(1, -1))
-        stdinv = 1 / np.float32(std.reshape(1, -1))
-        img -= mean
-        img *= stdinv
-        return img
-
-    def resize_norm_img_svtr(self, img, image_shape):
-
-        imgC, imgH, imgW = image_shape
-        resized_image = cv2.resize(
-            img, (imgW, imgH), interpolation=cv2.INTER_LINEAR)
-        resized_image = resized_image.astype('float32')
-        resized_image = resized_image.transpose((2, 0, 1)) / 255
-        resized_image -= 0.5
-        resized_image /= 0.5
-        return resized_image
-
-    def resize_norm_img_abinet(self, img, image_shape):
-
-        imgC, imgH, imgW = image_shape
-
-        resized_image = cv2.resize(
-            img, (imgW, imgH), interpolation=cv2.INTER_LINEAR)
-        resized_image = resized_image.astype('float32')
-        resized_image = resized_image / 255.
-
-        mean = np.array([0.485, 0.456, 0.406])
-        std = np.array([0.229, 0.224, 0.225])
-        resized_image = (
-            resized_image - mean[None, None, ...]) / std[None, None, ...]
-        resized_image = resized_image.transpose((2, 0, 1))
-        resized_image = resized_image.astype('float32')
-
-        return resized_image
-
-    def norm_img_can(self, img, image_shape):
-
-        img = cv2.cvtColor(
-            img, cv2.COLOR_BGR2GRAY)  # CAN only predict gray scale image
-
-        if self.rec_image_shape[0] == 1:
-            h, w = img.shape
-            _, imgH, imgW = self.rec_image_shape
-            if h < imgH or w < imgW:
-                padding_h = max(imgH - h, 0)
-                padding_w = max(imgW - w, 0)
-                img_padded = np.pad(img, ((0, padding_h), (0, padding_w)),
-                                    'constant',
-                                    constant_values=(255))
-                img = img_padded
-
-        img = np.expand_dims(img, 0) / 255.0  # h,w,c -> c,h,w
-        img = img.astype('float32')
-
-        return img
+    def _predict_single(self, pil_img):
+        try:
+            return self.predictor.predict(pil_img, return_prob=True)
+        except TypeError:
+            return self.predictor.predict(pil_img)
 
     def close(self):
-        # close session and release manually
-        logging.info('Close text recognizer.')
+        logging.info('Close text recognizer (VietOCR).')
         if hasattr(self, "predictor"):
             del self.predictor
         gc.collect()
 
     def __call__(self, img_list):
-        img_num = len(img_list)
-        # Calculate the aspect ratio of all text bars
-        width_list = []
-        for img in img_list:
-            width_list.append(img.shape[1] / float(img.shape[0]))
-        # Sorting can speed up the recognition process
-        indices = np.argsort(np.array(width_list))
-        rec_res = [['', 0.0]] * img_num
-        batch_num = self.rec_batch_num
         st = time.time()
+        results = []
+        pil_images = [self._to_pil(img) for img in img_list]
 
-        for beg_img_no in range(0, img_num, batch_num):
-            end_img_no = min(img_num, beg_img_no + batch_num)
-            norm_img_batch = []
-            imgC, imgH, imgW = self.rec_image_shape[:3]
-            max_wh_ratio = imgW / imgH
-            # max_wh_ratio = 0
-            for ino in range(beg_img_no, end_img_no):
-                h, w = img_list[indices[ino]].shape[0:2]
-                wh_ratio = w * 1.0 / h
-                max_wh_ratio = max(max_wh_ratio, wh_ratio)
-            for ino in range(beg_img_no, end_img_no):
-                norm_img = self.resize_norm_img(img_list[indices[ino]],
-                                                max_wh_ratio)
-                norm_img = norm_img[np.newaxis, :]
-                norm_img_batch.append(norm_img)
-            norm_img_batch = np.concatenate(norm_img_batch)
-            norm_img_batch = norm_img_batch.copy()
+        if self._predict_batch and len(pil_images) > 1:
+            for beg in range(0, len(pil_images), self.rec_batch_num):
+                end = beg + self.rec_batch_num
+                batch_predictions = self._predict_batch(pil_images[beg:end])
+                for prediction in batch_predictions:
+                    text, prob = self._normalize_prediction(prediction)
+                    results.append([text, prob])
+        else:
+            for pil_img in pil_images:
+                prediction = self._predict_single(pil_img)
+                text, prob = self._normalize_prediction(prediction)
+                results.append([text, prob])
 
-            input_dict = {}
-            input_dict[self.input_tensor.name] = norm_img_batch
-            for i in range(100000):
-                try:
-                    outputs = self.predictor.run(None, input_dict, self.run_options)
-                    break
-                except Exception as e:
-                    if i >= 3:
-                        raise e
-                    time.sleep(5)
-            preds = outputs[0]
-            rec_result = self.postprocess_op(preds)
-            for rno in range(len(rec_result)):
-                rec_res[indices[beg_img_no + rno]] = rec_result[rno]
-
-        return rec_res, time.time() - st
+        return results, time.time() - st
 
     def __del__(self):
         self.close()
-
 
 class TextDetector:
     def __init__(self, model_dir, device_id: int | None = None):
