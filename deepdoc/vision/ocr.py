@@ -226,6 +226,9 @@ class TextRecognizer:
     def __call__(self, img_list):
         st = time.time()
         results = []
+        if not img_list:
+            return results, time.time() - st
+
         pil_images = [self._to_pil(img) for img in img_list]
 
         if self._predict_batch and len(pil_images) > 1:
@@ -241,7 +244,7 @@ class TextRecognizer:
                 text, prob = self._normalize_prediction(prediction)
                 results.append([text, prob])
 
-        if not results:
+        if not results and pil_images:
             logging.warning(
                 "VietOCR returned no predictions for %d crops (device=%s, config=%s, weights=%s, batch_size=%d)",
                 len(pil_images),
