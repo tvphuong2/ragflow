@@ -180,6 +180,9 @@ class TextRecognizer:
 
         self.predictor = Predictor(cfg)
         self._predict_batch = getattr(self.predictor, "predict_batch", None)
+        self._device = target_device
+        self._config_name = config_name
+        self._weights_path = cfg.get("weights")
 
     def _to_pil(self, img):
         if isinstance(img, Image.Image):
@@ -237,6 +240,28 @@ class TextRecognizer:
                 prediction = self._predict_single(pil_img)
                 text, prob = self._normalize_prediction(prediction)
                 results.append([text, prob])
+
+        if not results:
+            logging.warning(
+                "VietOCR returned no predictions for %d crops (device=%s, config=%s, weights=%s, batch_size=%d)",
+                len(pil_images),
+                getattr(self, "_device", "unknown"),
+                getattr(self, "_config_name", "unknown"),
+                getattr(self, "_weights_path", "<pretrained>"),
+                self.rec_batch_num,
+            )
+        else:
+            empty_candidates = sum(1 for text, _ in results if not str(text).strip())
+            if empty_candidates == len(results):
+                sample_preds = results[:min(3, len(results))]
+                logging.warning(
+                    "VietOCR produced only empty strings for %d crops before filtering (device=%s, config=%s, weights=%s, sample=%s)",
+                    len(results),
+                    getattr(self, "_device", "unknown"),
+                    getattr(self, "_config_name", "unknown"),
+                    getattr(self, "_weights_path", "<pretrained>"),
+                    sample_preds,
+                )
 
         return results, time.time() - st
 
@@ -574,6 +599,9 @@ class OCR:
             if score >= self.drop_score:
                 filter_boxes.append(box)
                 filter_rec_res.append(rec_result)
+
+        if not filter_rec_res:
+            self._log_recognition_debug_info(device_id, img_crop_list, rec_res)
         end = time.time()
         time_dict['all'] = end - start
 
@@ -581,3 +609,47 @@ class OCR:
         #    print(f"{bno}, {rec_res[bno]}")
 
         return list(zip([a.tolist() for a in filter_boxes], filter_rec_res))
+
+    def _log_recognition_debug_info(self, device_id, img_crop_list, rec_res):
+        recognizer = self.text_recognizer[device_id]
+        recognizer_device = getattr(recognizer, "_device", device_id)
+        config_name = getattr(recognizer, "_config_name", "unknown")
+        weights_path = getattr(recognizer, "_weights_path", "<pretrained>")
+        batch_size = getattr(recognizer, "rec_batch_num", len(img_crop_list))
+
+        if not rec_res:
+            logging.warning(
+                "OCR recognize returned no candidate texts for %d crops (device=%s, config=%s, weights=%s, batch_size=%d, drop_score=%.2f)",
+                len(img_crop_list),
+                recognizer_device,
+                config_name,
+                weights_path,
+                batch_size,
+                self.drop_score,
+            )
+            return
+
+        try:
+            scores = [float(score) for _, score in rec_res]
+            min_score = min(scores)
+            max_score = max(scores)
+        except Exception:
+            scores = []
+            min_score = max_score = None
+
+        sample_preds = rec_res[:min(3, len(rec_res))]
+        if scores:
+            score_range = f"[{min_score:.4f}, {max_score:.4f}]"
+        else:
+            score_range = "unknown"
+
+        logging.warning(
+            "All %d recognition candidates were filtered out by drop_score %.2f (device=%s, config=%s, weights=%s, score_range=%s, sample=%s)",
+            len(rec_res),
+            self.drop_score,
+            recognizer_device,
+            config_name,
+            weights_path,
+            score_range,
+            sample_preds,
+        )
