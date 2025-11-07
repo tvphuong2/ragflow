@@ -1038,6 +1038,130 @@ class RAGFlowPdfParser:
         except Exception:
             logging.exception("total_page_number")
 
+    def _pdf_resolve(self, obj):
+        from pdfminer.pdftypes import resolve1
+        try:
+            return resolve1(obj)
+        except Exception:
+            return obj
+
+    def _detect_ttf_tables(self, font_bytes: bytes):
+        """
+        Trả về dict bảng SFNT {tag: (offset, length)} nếu là TrueType/OpenType; ngược lại None.
+        """
+        if not font_bytes or len(font_bytes) < 12:
+            return None
+        header = font_bytes[:4]
+        # TrueType: 0x00010000, Apple 'true'/'typ1', OpenType 'OTTO'
+        if header not in (b'\x00\x01\x00\x00', b'\x00\x00\x01\x00', b'true', b'typ1', b'OTTO'):
+            return None
+        try:
+            numTables = int.from_bytes(font_bytes[4:6], "big")
+            off = 12
+            tables = {}
+            for _ in range(numTables):
+                if off + 16 > len(font_bytes):
+                    break
+                tag = font_bytes[off:off+4].decode('latin-1', errors='ignore')
+                # skip checkSum
+                toff = int.from_bytes(font_bytes[off+8:off+12], "big")
+                tlen = int.from_bytes(font_bytes[off+12:off+16], "big")
+                tables[tag] = (toff, tlen)
+                off += 16
+            return tables
+        except Exception:
+            return None
+
+    def _page_fonts_with_mapping_info(self, fnm, page_from, page_to):
+        """
+        Trả về:
+        - per_page: {page_index_0_based: [{"BaseFont":..., "ToUnicode": bool, "HasCMAP": bool, ...}, ...]}
+        - pages_without_mapping: set các trang không có ToUnicode và cũng không có cmap ở bất kỳ font nào.
+        """
+        from pdfminer.pdfparser import PDFParser
+        from pdfminer.pdfdocument import PDFDocument
+        from pdfminer.pdfpage import PDFPage
+        from pdfminer.pdftypes import stream_value
+        from pdfminer.psparser import PSLiteral
+
+        def font_info(fdict):
+            info = {"BaseFont": None, "ToUnicode": False, "HasCMAP": None, "Embedded": False, "Encoding": None}
+            # BaseFont
+            bf = fdict.get("BaseFont")
+            info["BaseFont"] = (bf.name if isinstance(bf, PSLiteral) else getattr(bf, "name", None)) or str(bf)
+            # ToUnicode
+            tou = fdict.get("ToUnicode")
+            if tou is not None:
+                try:
+                    _ = stream_value(self._pdf_resolve(tou)).get_data()
+                    info["ToUnicode"] = True
+                except Exception:
+                    info["ToUnicode"] = True
+            # Encoding (tham khảo, không quyết định mapping)
+            enc = fdict.get("Encoding")
+            if isinstance(enc, PSLiteral):
+                info["Encoding"] = enc.name
+            elif isinstance(enc, dict):
+                info["Encoding"] = "CustomEncodingDict"
+            elif enc is None:
+                info["Encoding"] = None
+            else:
+                info["Encoding"] = str(enc)
+
+            # FontDescriptor → FontFile2/3
+            fd = self._pdf_resolve(fdict.get("FontDescriptor"))
+            if isinstance(fd, dict):
+                for key in ("FontFile", "FontFile2", "FontFile3"):
+                    if key in fd:
+                        info["Embedded"] = True
+                        try:
+                            data = stream_value(self._pdf_resolve(fd[key])).get_data()
+                        except Exception:
+                            data = None
+                        tables = self._detect_ttf_tables(data) if data else None
+                        info["HasCMAP"] = bool(tables and ("cmap" in tables))
+                        break
+            return info
+
+        # Mở PDF (từ path hoặc bytes)
+        f = open(fnm, "rb") if isinstance(fnm, str) else BytesIO(fnm)
+        parser = PDFParser(f)
+        doc = PDFDocument(parser)
+
+        per_page = {}
+        for idx, page in enumerate(PDFPage.create_pages(doc)):
+            if idx < page_from or idx >= page_to:
+                continue
+            page_fonts = []
+            try:
+                attrs = self._pdf_resolve(page.attrs)
+                resources = self._pdf_resolve(attrs.get("Resources"))
+                fonts = self._pdf_resolve(resources.get("Font")) if isinstance(resources, dict) and "Font" in resources else {}
+                if isinstance(fonts, dict):
+                    for _, fontref in fonts.items():
+                        fobj = self._pdf_resolve(fontref)
+                        if isinstance(fobj, dict):
+                            # Type0 → DescendantFonts[0] mới là CIDFont (nếu có)
+                            if "DescendantFonts" in fobj:
+                                dfonts = self._pdf_resolve(fobj["DescendantFonts"])
+                                if isinstance(dfonts, list) and dfonts:
+                                    page_fonts.append(font_info(self._pdf_resolve(dfonts[0])))
+                            # info ở lớp Type0 cũng hữu ích (ToUnicode thường bám ở đây)
+                            page_fonts.append(font_info(fobj))
+            except Exception as e:
+                logging.warning(f"Font inspection error at page {idx+1}: {e}")
+            per_page[idx - page_from] = page_fonts
+
+        f.close()
+
+        pages_without_mapping = set()
+        for rel_i, fonts in per_page.items():
+            has_any_mapping = any(fi.get("ToUnicode") or fi.get("HasCMAP") for fi in fonts)
+            if not has_any_mapping:
+                pages_without_mapping.add(rel_i)
+
+        return per_page, pages_without_mapping
+    
     def __images__(self, fnm, zoomin=3, page_from=0, page_to=299, callback=None):
         self.lefted_chars = []
         self.mean_height = []
@@ -1066,6 +1190,22 @@ class RAGFlowPdfParser:
             logging.exception("RAGFlowPdfParser __images__")
         logging.info(f"__images__ dedupe_chars cost {timer() - start}s")
 
+        try:
+            per_page_fonts, pages_without_mapping = self._page_fonts_with_mapping_info(fnm, page_from, page_to)
+            self.pages_without_unicode_mapping = pages_without_mapping  # lưu lại để dùng sau nếu cần
+            for rel_i in sorted(pages_without_mapping):
+                abs_page = page_from + rel_i + 1  # 1-based để log cho dễ đọc
+                fonts_desc = "; ".join(
+                    [f'{fi.get("BaseFont")} (ToUni={fi.get("ToUnicode")}, cmap={fi.get("HasCMAP")})'
+                    for fi in per_page_fonts.get(rel_i, [])]
+                ) or "no fonts"
+                logging.warning(f"[PDF TEXT MAPPING] Page {abs_page}: no ToUnicode and no cmap in any font → blanking chars. Fonts: {fonts_desc}")
+                # rỗng hoá chars ở trang này (fallback content rỗng)
+                if 0 <= rel_i < len(self.page_chars):
+                    self.page_chars[rel_i] = []
+        except Exception as e:
+            logging.warning(f"Font mapping inspection failed, skip per-page blanking: {e}")
+        
         self.outlines = []
         try:
             with pdf2_read(fnm if isinstance(fnm, str) else BytesIO(fnm)) as pdf:
