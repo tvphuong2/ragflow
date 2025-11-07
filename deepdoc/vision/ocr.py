@@ -31,6 +31,17 @@ import cv2
 import onnxruntime as ort
 from PIL import Image
 
+# Pillow 10 removed the Image.ANTIALIAS alias while many dependencies (including
+# some VietOCR transforms) still import it. Restore the alias when missing so the
+# pipeline stays compatible across Pillow versions.
+try:
+    _lanczos = Image.Resampling.LANCZOS  # Pillow >= 9.1
+except AttributeError:
+    _lanczos = getattr(Image, "LANCZOS", None)
+
+if _lanczos is not None and not hasattr(Image, "ANTIALIAS"):
+    Image.ANTIALIAS = _lanczos
+
 from .postprocess import build_post_process
 
 loaded_models = {}
