@@ -6,6 +6,8 @@ export default {
       selectAll: 'Select all',
       delete: 'Delete',
       deleteModalTitle: 'Are you sure to delete this item?',
+      deleteModalDescription:
+        'This action cannot be undone. The selected items will be deleted permanently.',
       ok: 'Ok',
       cancel: 'Cancel',
       yes: 'Yes',
@@ -49,6 +51,8 @@ export default {
       noDataFound: 'No data found.',
       noData: 'No data',
       promptPlaceholder: `Please input or use / to quickly insert variables.`,
+      renameDialogDescription:
+        'Update the name below and select save to apply your changes.',
       mcp: {
         namePlaceholder: 'My MCP Server',
         nameRequired:
@@ -1079,6 +1083,10 @@ This auto-tagging feature enhances retrieval by adding another layer of domain-s
         {input}
   The above is the content you need to summarize.`,
       createGraph: 'Create agent',
+      createAgentDialogDescription:
+        'Choose how you want to start and configure the agent details below before saving.',
+      uploadAgentDialogDescription:
+        'Select an exported agent file to import and review the details before saving.',
       createFromTemplates: 'Create from template',
       retrieval: 'Retrieval',
       generate: 'Generate',

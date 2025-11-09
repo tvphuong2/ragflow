@@ -5,6 +5,7 @@ import {
   AlertDialogContent,
   AlertDialogFooter,
   AlertDialogHeader,
+  AlertDialogDescription,
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
@@ -49,10 +50,12 @@ export function ConfirmDeleteDialog({
           <AlertDialogTitle>
             {title ?? t('common.deleteModalTitle')}
           </AlertDialogTitle>
-          {/* <AlertDialogDescription>
-            This action cannot be undone. This will permanently delete your
-            account and remove your data from our servers.
-          </AlertDialogDescription> */}
+          <AlertDialogDescription>
+            {t('common.deleteModalDescription', {
+              defaultValue:
+                'This action cannot be undone. The selected items will be deleted permanently.',
+            })}
+          </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel onClick={onCancel}>

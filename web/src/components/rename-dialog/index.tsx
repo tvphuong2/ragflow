@@ -3,6 +3,7 @@ import {
   DialogContent,
   DialogFooter,
   DialogHeader,
+  DialogDescription,
   DialogTitle,
 } from '@/components/ui/dialog';
 import { IModalProps } from '@/interfaces/common';
@@ -26,6 +27,12 @@ export function RenameDialog({
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>{title || t('common.rename')}</DialogTitle>
+          <DialogDescription>
+            {t('common.renameDialogDescription', {
+              defaultValue:
+                'Update the name below and select save to apply your changes.',
+            })}
+          </DialogDescription>
         </DialogHeader>
         <RenameForm
           initialName={initialName}

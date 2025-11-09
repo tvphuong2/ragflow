@@ -4,6 +4,7 @@ import {
   DialogContent,
   DialogFooter,
   DialogHeader,
+  DialogDescription,
   DialogTitle,
 } from '@/components/ui/dialog';
 import { TagRenameId } from '@/pages/add-knowledge/constant';
@@ -25,6 +26,12 @@ export function CreateAgentDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>{t('flow.createGraph')}</DialogTitle>
+          <DialogDescription>
+            {t('flow.createAgentDialogDescription', {
+              defaultValue:
+                'Choose how you want to start and configure the agent details below before saving.',
+            })}
+          </DialogDescription>
         </DialogHeader>
         <CreateAgentForm
           hideModal={hideModal}

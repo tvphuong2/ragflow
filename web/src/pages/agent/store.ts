@@ -103,13 +103,17 @@ const useGraphStore = create<RFState>()(
       clickedNodeId: '',
       clickedToolId: '',
       onNodesChange: (changes) => {
+        const clonedNodes = get().nodes.map((node) => ({ ...node }));
+
         set({
-          nodes: applyNodeChanges(changes, get().nodes),
+          nodes: applyNodeChanges(changes, clonedNodes),
         });
       },
       onEdgesChange: (changes: EdgeChange[]) => {
+        const clonedEdges = get().edges.map((edge) => ({ ...edge }));
+
         set({
-          edges: applyEdgeChanges(changes, get().edges),
+          edges: applyEdgeChanges(changes, clonedEdges),
         });
       },
       onEdgeMouseEnter: (event, edge) => {

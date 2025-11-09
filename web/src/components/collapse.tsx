@@ -93,7 +93,59 @@ export function NodeCollapsible<T extends any[]>({
 
   const nextClassName = cn('space-y-2', className);
 
-  const nextItems = items.every((x) => Array.isArray(x)) ? items.flat() : items;
+  const baseItems = React.useMemo(() => {
+    return Array.isArray(items) ? [...items] : ([] as unknown as T);
+  }, [items]);
+
+  const nextItems = React.useMemo(() => {
+    return baseItems.every((x) => Array.isArray(x))
+      ? (baseItems.flat() as Array<T[number]>)
+      : (baseItems as Array<T[number]>);
+  }, [baseItems]);
+
+  const getItemKey = React.useCallback((item: T[number], index: number) => {
+    if (item == null) {
+      return index;
+    }
+
+    if (typeof item === 'string' || typeof item === 'number') {
+      return `${item}`;
+    }
+
+    if (typeof item === 'object') {
+      const possibleKey =
+        // @ts-expect-error index access
+        (item.id as string | number | undefined) ??
+        // @ts-expect-error index access
+        item.mcp_id ??
+        // @ts-expect-error index access
+        item.component_name ??
+        undefined;
+
+      if (possibleKey !== undefined) {
+        return `${possibleKey}`;
+      }
+    }
+
+    return index;
+  }, []);
+
+  const renderItems = React.useCallback(
+    (list: Array<T[number]>, startIndex = 0) =>
+      list.map((item, idx) => {
+        const element = children(item, idx + startIndex);
+        const key = getItemKey(item, idx + startIndex);
+
+        if (React.isValidElement(element)) {
+          return element.key != null
+            ? element
+            : React.cloneElement(element, { key });
+        }
+
+        return <React.Fragment key={key}>{element}</React.Fragment>;
+      }),
+    [children, getItemKey],
+  );
 
   return (
     <Collapsible
@@ -101,9 +153,9 @@ export function NodeCollapsible<T extends any[]>({
       onOpenChange={setIsOpen}
       className={cn('relative', nextClassName)}
     >
-      {nextItems.slice(0, 3).map(children)}
+      {renderItems(nextItems.slice(0, 3))}
       <CollapsibleContent className={nextClassName}>
-        {nextItems.slice(3).map((x, idx) => children(x, idx + 3))}
+        {renderItems(nextItems.slice(3), 3)}
       </CollapsibleContent>
       {nextItems.length > 3 && (
         <CollapsibleTrigger
